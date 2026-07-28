@@ -1,0 +1,3 @@
+[submodule "extern/FCV1-Simulator"]
+	path = extern/FCV1-Simulator
+	url = https://github.com/kr-work/FCV1-Simulator.git
