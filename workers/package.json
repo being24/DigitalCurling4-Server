@@ -5,10 +5,13 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy"
   },
-  "dependencies": {},
+  "dependencies": {
+    "uuid": "^14.0.1"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260728.1",
     "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
     "wrangler": "^4.115.0"
   }
 }
