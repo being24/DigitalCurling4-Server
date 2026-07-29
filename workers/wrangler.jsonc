@@ -13,5 +13,13 @@
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["MatchRoom"] }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "dc4-db",
+      "database_id": "2e0c3fd3-9bf7-4428-ac36-a7d982b806d0",
+      "migrations_dir": "drizzle"
+    }
   ]
 }
