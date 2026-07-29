@@ -21,5 +21,9 @@
       "database_id": "2e0c3fd3-9bf7-4428-ac36-a7d982b806d0",
       "migrations_dir": "drizzle"
     }
-  ]
+  ],
+  "triggers": {
+    // 元実装(src/main.py lifespan内APScheduler): interval, hours=24 と同等の毎日0時実行
+    "crons": ["0 0 * * *"]
+  }
 }
