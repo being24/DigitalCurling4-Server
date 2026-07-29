@@ -6,9 +6,6 @@ import { matchRoutes } from "./routes/match";
 
 export const app = new Hono<{ Bindings: Bindings }>();
 
-app.route("/", restapiRoutes);
-app.route("/", matchRoutes);
-
 app.post("/simulate", (c) => handleSimulate(c.req.raw));
 
 app.get("/ws", async (c) => {
@@ -19,3 +16,6 @@ app.get("/ws", async (c) => {
   const stub = c.env.MATCH_ROOM.getByName(matchId);
   return stub.fetch(c.req.raw);
 });
+
+app.route("/", restapiRoutes);
+app.route("/", matchRoutes);
