@@ -33,13 +33,18 @@ function getInstance(): Promise<FCV1Module> {
   return instancePromise;
 }
 
-export async function handleSimulate(request: Request): Promise<Response> {
+/**
+ * Wasmインスタンス経由で`simulate_json`を直接呼び出す(HTTPラウンドトリップなし)。
+ * `handleSimulate`(デバッグ用HTTPエンドポイント)と投球処理エンドポイント(Task06)の両方から使う。
+ */
+export async function callSimulateJson(
+  inputJson: string,
+): Promise<{ result: string; elapsedMs: number }> {
   const instance = await getInstance();
-  const body = await request.text();
 
-  const inputBytes = instance.lengthBytesUTF8(body) + 1;
+  const inputBytes = instance.lengthBytesUTF8(inputJson) + 1;
   const inputPtr = instance._malloc(inputBytes);
-  instance.stringToUTF8(body, inputPtr, inputBytes);
+  instance.stringToUTF8(inputJson, inputPtr, inputBytes);
 
   const t0 = Date.now();
   const resultPtr = instance.ccall(
@@ -51,6 +56,13 @@ export async function handleSimulate(request: Request): Promise<Response> {
   const elapsedMs = Date.now() - t0;
   const result = instance.UTF8ToString(resultPtr);
   instance._free(inputPtr);
+
+  return { result, elapsedMs };
+}
+
+export async function handleSimulate(request: Request): Promise<Response> {
+  const body = await request.text();
+  const { result, elapsedMs } = await callSimulateJson(body);
 
   return new Response(
     JSON.stringify({ result: JSON.parse(result), elapsed_ms: elapsedMs }),
