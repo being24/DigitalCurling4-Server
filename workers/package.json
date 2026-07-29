@@ -7,6 +7,7 @@
   },
   "dependencies": {
     "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.32",
     "uuid": "^14.0.1"
   },
   "devDependencies": {

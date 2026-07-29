@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
-import type { Env } from "./index";
+import type { Bindings } from "./env";
 
-export class MatchRoom extends DurableObject<Env> {
+export class MatchRoom extends DurableObject<Bindings> {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const team = url.searchParams.get("team") ?? "unknown";
