@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStateModel,
-  sortStatesForReplay,
   type MatchDataRow,
   type StateRow,
+  sortStatesForReplay,
 } from "./services/state_replay";
 
 /**
@@ -63,8 +63,16 @@ describe("sortStatesForReplay", () => {
 
   it("team_shot_numberが同一ならcreated_atの昇順でタイブレークする", () => {
     const states = [
-      makeStateRow({ stateId: "later", teamShotNumber: 1, createdAt: new Date("2026-07-29T00:01:00Z") }),
-      makeStateRow({ stateId: "earlier", teamShotNumber: 1, createdAt: new Date("2026-07-29T00:00:00Z") }),
+      makeStateRow({
+        stateId: "later",
+        teamShotNumber: 1,
+        createdAt: new Date("2026-07-29T00:01:00Z"),
+      }),
+      makeStateRow({
+        stateId: "earlier",
+        teamShotNumber: 1,
+        createdAt: new Date("2026-07-29T00:00:00Z"),
+      }),
     ];
     const sorted = sortStatesForReplay(states);
     expect(sorted.map((s) => s.stateId)).toEqual(["earlier", "later"]);
@@ -81,7 +89,10 @@ describe("sortStatesForReplay", () => {
   });
 
   it("元配列を破壊しない", () => {
-    const states = [makeStateRow({ stateId: "s2", teamShotNumber: 2 }), makeStateRow({ stateId: "s1", teamShotNumber: 1 })];
+    const states = [
+      makeStateRow({ stateId: "s2", teamShotNumber: 2 }),
+      makeStateRow({ stateId: "s1", teamShotNumber: 1 }),
+    ];
     const original = [...states];
     sortStatesForReplay(states);
     expect(states).toEqual(original);
@@ -128,7 +139,11 @@ describe("buildStateModel", () => {
       stateData: makeStateRow(),
       stoneCoordinateData: {},
       scoreData,
-      shotInfoData: { translationalVelocity: 2.5, angularVelocity: 1.2, shotAngle: 0.1 },
+      shotInfoData: {
+        translationalVelocity: 2.5,
+        angularVelocity: 1.2,
+        shotAngle: 0.1,
+      },
     });
     expect(withShot.last_move).toEqual({
       translational_velocity: 2.5,
@@ -149,7 +164,11 @@ describe("buildStateModel", () => {
   it("mixed doublesのpre-end-setup(next_shot_team_id=None)ではteam_shot_number/total_shot_numberをnullにする", () => {
     const model = buildStateModel({
       matchData: makeMatchData({ gameMode: "mixed_doubles" }),
-      stateData: makeStateRow({ nextShotTeamId: null, teamShotNumber: 3, totalShotNumber: 5 }),
+      stateData: makeStateRow({
+        nextShotTeamId: null,
+        teamShotNumber: 3,
+        totalShotNumber: 5,
+      }),
       stoneCoordinateData: {},
       scoreData,
     });
@@ -160,7 +179,11 @@ describe("buildStateModel", () => {
   it("standardモードではnext_shot_team_id=Noneでもteam_shot_number/total_shot_numberを維持する", () => {
     const model = buildStateModel({
       matchData: makeMatchData({ gameMode: "standard" }),
-      stateData: makeStateRow({ nextShotTeamId: null, teamShotNumber: 3, totalShotNumber: 5 }),
+      stateData: makeStateRow({
+        nextShotTeamId: null,
+        teamShotNumber: 3,
+        totalShotNumber: 5,
+      }),
       stoneCoordinateData: {},
       scoreData,
     });

@@ -1,6 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
-import { drizzle } from "drizzle-orm/d1";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { drizzle } from "drizzle-orm/d1";
 import type { Bindings } from "./env";
 import {
   readLatestStateData,
@@ -9,7 +9,11 @@ import {
   readStateDataInEnd,
   type StateWithRelations,
 } from "./services/match_room_queries";
-import { buildStateModel, sortStatesForReplay, type MatchDataRow } from "./services/state_replay";
+import {
+  buildStateModel,
+  type MatchDataRow,
+  sortStatesForReplay,
+} from "./services/state_replay";
 
 type PlayerTeam = "team0" | "team1";
 
@@ -51,7 +55,10 @@ export class MatchRoom extends DurableObject<Bindings> {
 
     this.ctx.acceptWebSocket(server, [team]);
 
-    this.broadcast(JSON.stringify({ type: "presence", team, event: "joined" }), server);
+    this.broadcast(
+      JSON.stringify({ type: "presence", team, event: "joined" }),
+      server,
+    );
 
     if (team === "viewer") {
       await this.sendViewerInitialSync(matchId, server);
@@ -84,7 +91,10 @@ export class MatchRoom extends DurableObject<Bindings> {
     const matchDataRow = await readMatchDataRow(db, matchId);
     if (!matchDataRow) return;
 
-    const shotInfoData = await readShotInfoByPostShotStateId(db, latest.stateRow.stateId);
+    const shotInfoData = await readShotInfoByPostShotStateId(
+      db,
+      latest.stateRow.stateId,
+    );
     const model = buildStateModel({
       matchData: matchDataRow,
       stateData: latest.stateRow,
@@ -93,22 +103,38 @@ export class MatchRoom extends DurableObject<Bindings> {
       shotInfoData,
     });
 
-    this.broadcast(JSON.stringify({ type: "latest_state_update", payload: model }));
+    this.broadcast(
+      JSON.stringify({ type: "latest_state_update", payload: model }),
+    );
   }
 
-  async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+  async webSocketMessage(
+    ws: WebSocket,
+    message: string | ArrayBuffer,
+  ): Promise<void> {
     const tags = this.ctx.getTags(ws);
     const team = tags[0] ?? "unknown";
     this.broadcast(
-      JSON.stringify({ type: "message", from: team, payload: message.toString() }),
+      JSON.stringify({
+        type: "message",
+        from: team,
+        payload: message.toString(),
+      }),
       ws,
     );
   }
 
-  async webSocketClose(ws: WebSocket, code: number, reason: string): Promise<void> {
+  async webSocketClose(
+    ws: WebSocket,
+    code: number,
+    reason: string,
+  ): Promise<void> {
     const tags = this.ctx.getTags(ws);
     const team = tags[0] ?? "unknown";
-    this.broadcast(JSON.stringify({ type: "presence", team, event: "left" }), ws);
+    this.broadcast(
+      JSON.stringify({ type: "presence", team, event: "left" }),
+      ws,
+    );
     ws.close(code, reason);
   }
 
@@ -123,7 +149,10 @@ export class MatchRoom extends DurableObject<Bindings> {
    * `_initial_sync_for_viewer`相当。バリアなしで現在Endの全State履歴を即座にreplayする。
    * DB未書き込みの間は何も送らず、通常配信(pushStateUpdate)が来るまで待つ。
    */
-  private async sendViewerInitialSync(matchId: string, ws: WebSocket): Promise<void> {
+  private async sendViewerInitialSync(
+    matchId: string,
+    ws: WebSocket,
+  ): Promise<void> {
     const db = drizzle(this.env.DB);
     const latest = await readLatestStateData(db, matchId);
     if (!latest) return;
@@ -131,8 +160,17 @@ export class MatchRoom extends DurableObject<Bindings> {
     const matchDataRow = await readMatchDataRow(db, matchId);
     if (!matchDataRow) return;
 
-    const statesInEnd = await readStateDataInEnd(db, matchId, latest.stateRow.endNumber);
-    await this.replayStates(db, matchDataRow, statesInEnd.length > 0 ? statesInEnd : [latest], ws);
+    const statesInEnd = await readStateDataInEnd(
+      db,
+      matchId,
+      latest.stateRow.endNumber,
+    );
+    await this.replayStates(
+      db,
+      matchDataRow,
+      statesInEnd.length > 0 ? statesInEnd : [latest],
+      ws,
+    );
   }
 
   /**
@@ -145,16 +183,22 @@ export class MatchRoom extends DurableObject<Bindings> {
    * 程度に留めている（内容の破損はない）。
    */
   private async maybeSyncPlayers(matchId: string): Promise<void> {
-    const bothPresent = PLAYER_TEAMS.every((t) => this.ctx.getWebSockets(t).length > 0);
+    const bothPresent = PLAYER_TEAMS.every(
+      (t) => this.ctx.getWebSockets(t).length > 0,
+    );
     if (!bothPresent) return;
 
     const db = drizzle(this.env.DB);
     const matchDataRow = await readMatchDataRow(db, matchId);
     const bothConfigured =
-      matchDataRow !== null && matchDataRow.firstTeamName !== null && matchDataRow.secondTeamName !== null;
+      matchDataRow !== null &&
+      matchDataRow.firstTeamName !== null &&
+      matchDataRow.secondTeamName !== null;
     if (!bothConfigured || matchDataRow === null) return;
 
-    const unsyncedPlayerSockets = PLAYER_TEAMS.flatMap((t) => this.ctx.getWebSockets(t)).filter(
+    const unsyncedPlayerSockets = PLAYER_TEAMS.flatMap((t) =>
+      this.ctx.getWebSockets(t),
+    ).filter(
       (ws) => !(ws.deserializeAttachment() as WsAttachment | null)?.synced,
     );
     if (unsyncedPlayerSockets.length === 0) return;
@@ -162,7 +206,11 @@ export class MatchRoom extends DurableObject<Bindings> {
     const latest = await readLatestStateData(db, matchId);
     if (!latest) return;
 
-    const statesInEnd = await readStateDataInEnd(db, matchId, latest.stateRow.endNumber);
+    const statesInEnd = await readStateDataInEnd(
+      db,
+      matchId,
+      latest.stateRow.endNumber,
+    );
     const statesToReplay = statesInEnd.length > 0 ? statesInEnd : [latest];
 
     for (const ws of unsyncedPlayerSockets) {
@@ -185,7 +233,10 @@ export class MatchRoom extends DurableObject<Bindings> {
       const withRelations = byStateId.get(stateRow.stateId);
       if (!withRelations) continue;
 
-      const shotInfoData = await readShotInfoByPostShotStateId(db, stateRow.stateId);
+      const shotInfoData = await readShotInfoByPostShotStateId(
+        db,
+        stateRow.stateId,
+      );
       const model = buildStateModel({
         matchData: matchDataRow,
         stateData: stateRow,
@@ -194,7 +245,8 @@ export class MatchRoom extends DurableObject<Bindings> {
         shotInfoData,
       });
 
-      const eventType = i === sorted.length - 1 ? "latest_state_update" : "state_update";
+      const eventType =
+        i === sorted.length - 1 ? "latest_state_update" : "state_update";
       ws.send(JSON.stringify({ type: eventType, payload: model }));
     }
   }

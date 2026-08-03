@@ -1,6 +1,6 @@
 import { and, desc, eq, or } from "drizzle-orm";
-import type { DrizzleD1Database } from "drizzle-orm/d1";
 import type { BatchItem } from "drizzle-orm/batch";
+import type { DrizzleD1Database } from "drizzle-orm/d1";
 import {
   basicAuthentication,
   matchData,
@@ -15,8 +15,12 @@ import {
   trajectory,
   users,
 } from "../db/schema";
+import type {
+  PowerPlaySide,
+  StoneCoordinateData,
+  TeamName,
+} from "../domain/match_rules";
 import { generateMixedDoublesInitialStones } from "../domain/match_rules";
-import type { PowerPlaySide, StoneCoordinateData, TeamName } from "../domain/match_rules";
 import { generateUuid7 } from "../lib/uuid7";
 
 /**
@@ -28,7 +32,10 @@ import { generateUuid7 } from "../lib/uuid7";
  * 素朴な手順とし、Task07(MatchRoom)と同様に競合はスコープ外の既知のトレードオフとする。
  */
 
-async function runBatch(db: DrizzleD1Database, statements: BatchItem<"sqlite">[]): Promise<void> {
+async function runBatch(
+  db: DrizzleD1Database,
+  statements: BatchItem<"sqlite">[],
+): Promise<void> {
   if (statements.length === 0) return;
   await db.batch(statements as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
 }
@@ -120,7 +127,10 @@ export interface ShotInfoInsertRow {
 // ---- Read ----
 
 /** `src/crud.py::ReadData.read_simulator_id`相当 */
-export async function readSimulatorId(db: DrizzleD1Database, simulatorName: string): Promise<string | null> {
+export async function readSimulatorId(
+  db: DrizzleD1Database,
+  simulatorName: string,
+): Promise<string | null> {
   const rows = await db
     .select({ physicalSimulatorId: physicalSimulator.physicalSimulatorId })
     .from(physicalSimulator)
@@ -130,7 +140,10 @@ export async function readSimulatorId(db: DrizzleD1Database, simulatorName: stri
 }
 
 /** `src/crud.py::ReadData.read_team_id`相当。同名チームを最後に使ったmatchのteam_idを返す */
-export async function readTeamId(db: DrizzleD1Database, teamName: string): Promise<string | null> {
+export async function readTeamId(
+  db: DrizzleD1Database,
+  teamName: string,
+): Promise<string | null> {
   const rows = await db
     .select({
       firstTeamName: matchData.firstTeamName,
@@ -139,7 +152,12 @@ export async function readTeamId(db: DrizzleD1Database, teamName: string): Promi
       secondTeamId: matchData.secondTeamId,
     })
     .from(matchData)
-    .where(or(eq(matchData.firstTeamName, teamName), eq(matchData.secondTeamName, teamName)))
+    .where(
+      or(
+        eq(matchData.firstTeamName, teamName),
+        eq(matchData.secondTeamName, teamName),
+      ),
+    )
     .orderBy(desc(matchData.createdAt))
     .limit(1);
   const row = rows[0];
@@ -150,7 +168,11 @@ export async function readTeamId(db: DrizzleD1Database, teamName: string): Promi
 }
 
 /** `src/crud.py::ReadData.read_player_id`相当 */
-export async function readPlayerId(db: DrizzleD1Database, playerName: string, teamId: string): Promise<string | null> {
+export async function readPlayerId(
+  db: DrizzleD1Database,
+  playerName: string,
+  teamId: string,
+): Promise<string | null> {
   const rows = await db
     .select({ playerId: player.playerId })
     .from(player)
@@ -160,8 +182,15 @@ export async function readPlayerId(db: DrizzleD1Database, playerName: string, te
 }
 
 /** `src/crud.py::ReadData.read_player_data`相当 */
-export async function readPlayerData(db: DrizzleD1Database, playerId: string): Promise<PlayerRow | null> {
-  const rows = await db.select().from(player).where(eq(player.playerId, playerId)).limit(1);
+export async function readPlayerData(
+  db: DrizzleD1Database,
+  playerId: string,
+): Promise<PlayerRow | null> {
+  const rows = await db
+    .select()
+    .from(player)
+    .where(eq(player.playerId, playerId))
+    .limit(1);
   const row = rows[0];
   if (!row) return null;
   return {
@@ -196,8 +225,15 @@ export async function readMixedDoublesSettingsRow(
 }
 
 /** `src/crud.py::ReadData.read_match_data`相当。mixed_doubles_settingsも結合して返す */
-export async function readMatchData(db: DrizzleD1Database, matchId: string): Promise<MatchDataRow | null> {
-  const rows = await db.select().from(matchData).where(eq(matchData.matchId, matchId)).limit(1);
+export async function readMatchData(
+  db: DrizzleD1Database,
+  matchId: string,
+): Promise<MatchDataRow | null> {
+  const rows = await db
+    .select()
+    .from(matchData)
+    .where(eq(matchData.matchId, matchId))
+    .limit(1);
   const row = rows[0];
   if (!row) return null;
   const mixedDoublesSettings = await readMixedDoublesSettingsRow(db, matchId);
@@ -230,8 +266,15 @@ export async function readMatchData(db: DrizzleD1Database, matchId: string): Pro
 }
 
 /** `src/authentication/basic_authentication_crud.py::ReadAuthentication.read_user_data`のうちhash_password取得部分相当 */
-export async function readUserHashPassword(db: DrizzleD1Database, username: string): Promise<string | null> {
-  const rows = await db.select({ hashPassword: users.hashPassword }).from(users).where(eq(users.username, username)).limit(1);
+export async function readUserHashPassword(
+  db: DrizzleD1Database,
+  username: string,
+): Promise<string | null> {
+  const rows = await db
+    .select({ hashPassword: users.hashPassword })
+    .from(users)
+    .where(eq(users.username, username))
+    .limit(1);
   return rows[0]?.hashPassword ?? null;
 }
 
@@ -244,7 +287,12 @@ export async function readMatchAuthTeamName(
   const rows = await db
     .select({ matchTeamName: basicAuthentication.matchTeamName })
     .from(basicAuthentication)
-    .where(and(eq(basicAuthentication.username, username), eq(basicAuthentication.matchId, matchId)))
+    .where(
+      and(
+        eq(basicAuthentication.username, username),
+        eq(basicAuthentication.matchId, matchId),
+      ),
+    )
     .limit(1);
   const value = rows[0]?.matchTeamName;
   return value === "team0" || value === "team1" ? value : null;
@@ -297,14 +345,27 @@ export interface CreateMatchDataInput {
   gameMode: string;
   createdAt: Date;
   startedAt: Date;
-  mixedDoublesSettings: { positionedStonesPattern: number; endSetupTeamIds: string[] } | null;
+  mixedDoublesSettings: {
+    positionedStonesPattern: number;
+    endSetupTeamIds: string[];
+  } | null;
 }
 
 /** `src/crud.py::CreateData.create_match_data`相当。score/tournament/match_data(/mixed_doubles_settings)を1バッチで作成 */
-export async function createMatchData(db: DrizzleD1Database, input: CreateMatchDataInput): Promise<void> {
+export async function createMatchData(
+  db: DrizzleD1Database,
+  input: CreateMatchDataInput,
+): Promise<void> {
   const statements: BatchItem<"sqlite">[] = [
-    db.insert(score).values({ scoreId: input.scoreId, team0: input.teamScore, team1: input.teamScore }),
-    db.insert(tournament).values({ tournamentId: input.tournamentId, tournamentName: input.tournamentName }),
+    db.insert(score).values({
+      scoreId: input.scoreId,
+      team0: input.teamScore,
+      team1: input.teamScore,
+    }),
+    db.insert(tournament).values({
+      tournamentId: input.tournamentId,
+      tournamentName: input.tournamentName,
+    }),
     db.insert(matchData).values({
       matchId: input.matchId,
       firstTeamName: null,
@@ -337,7 +398,8 @@ export async function createMatchData(db: DrizzleD1Database, input: CreateMatchD
     statements.push(
       db.insert(matchMixedDoublesSettings).values({
         matchId: input.matchId,
-        positionedStonesPattern: input.mixedDoublesSettings.positionedStonesPattern,
+        positionedStonesPattern:
+          input.mixedDoublesSettings.positionedStonesPattern,
         team0PowerPlayEnd: null,
         team1PowerPlayEnd: null,
         endSetupTeamIds: input.mixedDoublesSettings.endSetupTeamIds,
@@ -347,7 +409,10 @@ export async function createMatchData(db: DrizzleD1Database, input: CreateMatchD
   await runBatch(db, statements);
 }
 
-function stateInsertStatements(db: DrizzleD1Database, row: StateInsertRow): BatchItem<"sqlite">[] {
+function stateInsertStatements(
+  db: DrizzleD1Database,
+  row: StateInsertRow,
+): BatchItem<"sqlite">[] {
   return [
     db.insert(stoneCoordinate).values({
       stoneCoordinateId: row.stoneCoordinate.stoneCoordinateId,
@@ -374,12 +439,18 @@ function stateInsertStatements(db: DrizzleD1Database, row: StateInsertRow): Batc
 }
 
 /** `src/crud.py::CreateData.create_state_data`相当(match作成直後の初期State) */
-export async function createStateData(db: DrizzleD1Database, row: StateInsertRow): Promise<void> {
+export async function createStateData(
+  db: DrizzleD1Database,
+  row: StateInsertRow,
+): Promise<void> {
   await runBatch(db, stateInsertStatements(db, row));
 }
 
 /** `src/crud.py::CreateData.create_player_data`相当 */
-export async function createPlayerData(db: DrizzleD1Database, row: PlayerRow): Promise<void> {
+export async function createPlayerData(
+  db: DrizzleD1Database,
+  row: PlayerRow,
+): Promise<void> {
   await db.insert(player).values({
     playerId: row.playerId,
     teamId: row.teamId,
@@ -398,7 +469,10 @@ export async function updateMatchDataWithTeamName(
   expectedMatchTeamName: TeamName,
 ): Promise<TeamName | null> {
   const rows = await db
-    .select({ firstTeamName: matchData.firstTeamName, secondTeamName: matchData.secondTeamName })
+    .select({
+      firstTeamName: matchData.firstTeamName,
+      secondTeamName: matchData.secondTeamName,
+    })
     .from(matchData)
     .where(eq(matchData.matchId, matchId))
     .limit(1);
@@ -407,18 +481,30 @@ export async function updateMatchDataWithTeamName(
 
   if (row.firstTeamName === null && row.secondTeamName === null) {
     if (expectedMatchTeamName === "team0") {
-      await db.update(matchData).set({ firstTeamName: teamName }).where(eq(matchData.matchId, matchId));
+      await db
+        .update(matchData)
+        .set({ firstTeamName: teamName })
+        .where(eq(matchData.matchId, matchId));
       return "team0";
     }
-    await db.update(matchData).set({ secondTeamName: teamName }).where(eq(matchData.matchId, matchId));
+    await db
+      .update(matchData)
+      .set({ secondTeamName: teamName })
+      .where(eq(matchData.matchId, matchId));
     return "team1";
   }
   if (row.firstTeamName === null && row.secondTeamName !== null) {
-    await db.update(matchData).set({ firstTeamName: teamName }).where(eq(matchData.matchId, matchId));
+    await db
+      .update(matchData)
+      .set({ firstTeamName: teamName })
+      .where(eq(matchData.matchId, matchId));
     return "team0";
   }
   if (row.firstTeamName !== null && row.secondTeamName === null) {
-    await db.update(matchData).set({ secondTeamName: teamName }).where(eq(matchData.matchId, matchId));
+    await db
+      .update(matchData)
+      .set({ secondTeamName: teamName })
+      .where(eq(matchData.matchId, matchId));
     return "team1";
   }
   return null;
@@ -469,16 +555,27 @@ export async function updateSecondTeam(
 }
 
 /** `src/crud.py::UpdateData.update_next_shot_team`相当。latest stateのnext_shot_team_idを更新する */
-export async function updateNextShotTeam(db: DrizzleD1Database, matchId: string, teamId: string): Promise<void> {
+export async function updateNextShotTeam(
+  db: DrizzleD1Database,
+  matchId: string,
+  teamId: string,
+): Promise<void> {
   const rows = await db
     .select({ stateId: state.stateId })
     .from(state)
     .where(eq(state.matchId, matchId))
-    .orderBy(desc(state.endNumber), desc(state.totalShotNumber), desc(state.stateId))
+    .orderBy(
+      desc(state.endNumber),
+      desc(state.totalShotNumber),
+      desc(state.stateId),
+    )
     .limit(1);
   const row = rows[0];
   if (!row) return;
-  await db.update(state).set({ nextShotTeamId: teamId }).where(eq(state.stateId, row.stateId));
+  await db
+    .update(state)
+    .set({ nextShotTeamId: teamId })
+    .where(eq(state.stateId, row.stateId));
 }
 
 /** `src/services/match_db.py::set_end_setup_team_for_end`相当 */
@@ -491,7 +588,10 @@ export async function setEndSetupTeamForEnd(
   const settingsRow = await readMixedDoublesSettingsRow(db, matchId);
   if (!settingsRow) throw new Error("Mixed doubles settings row not found.");
 
-  const selectorList = settingsRow.endSetupTeamIds.length > 0 ? [...settingsRow.endSetupTeamIds] : [selectorTeamId];
+  const selectorList =
+    settingsRow.endSetupTeamIds.length > 0
+      ? [...settingsRow.endSetupTeamIds]
+      : [selectorTeamId];
 
   if (endNumber < 0) throw new Error("end_number must be >= 0");
   if (endNumber < selectorList.length) {
@@ -499,7 +599,9 @@ export async function setEndSetupTeamForEnd(
   } else if (endNumber === selectorList.length) {
     selectorList.push(selectorTeamId);
   } else {
-    throw new Error("end_setup_team_ids has a gap; cannot set future end without previous entries.");
+    throw new Error(
+      "end_setup_team_ids has a gap; cannot set future end without previous entries.",
+    );
   }
 
   await db
@@ -508,9 +610,15 @@ export async function setEndSetupTeamForEnd(
     .where(eq(matchMixedDoublesSettings.matchId, matchId));
 }
 
-function shotInfoInsertStatements(db: DrizzleD1Database, row: ShotInfoInsertRow): BatchItem<"sqlite">[] {
+function shotInfoInsertStatements(
+  db: DrizzleD1Database,
+  row: ShotInfoInsertRow,
+): BatchItem<"sqlite">[] {
   return [
-    db.insert(trajectory).values({ trajectoryId: row.trajectoryId }).onConflictDoNothing(),
+    db
+      .insert(trajectory)
+      .values({ trajectoryId: row.trajectoryId })
+      .onConflictDoNothing(),
     db.insert(shotInfo).values({
       shotId: row.shotId,
       playerId: row.playerId,
@@ -535,11 +643,17 @@ export interface RecordShotResultInput {
 }
 
 /** `src/services/match_db.py::record_shot_result`相当。End途中の1投を1バッチでアトミックに記録する */
-export async function recordShotResult(db: DrizzleD1Database, input: RecordShotResultInput): Promise<void> {
+export async function recordShotResult(
+  db: DrizzleD1Database,
+  input: RecordShotResultInput,
+): Promise<void> {
   const statements: BatchItem<"sqlite">[] = [
     ...shotInfoInsertStatements(db, input.shotInfo),
     ...stateInsertStatements(db, input.postState),
-    db.update(state).set({ shotId: input.shotInfo.shotId }).where(eq(state.stateId, input.preStateId)),
+    db
+      .update(state)
+      .set({ shotId: input.shotInfo.shotId })
+      .where(eq(state.stateId, input.preStateId)),
   ];
   await runBatch(db, statements);
 }
@@ -555,7 +669,10 @@ export interface RecordLastShotOfEndInput {
 }
 
 /** `src/services/match_db.py::record_last_shot_of_end`相当。Endの最後の1投を1バッチでアトミックに記録する */
-export async function recordLastShotOfEnd(db: DrizzleD1Database, input: RecordLastShotOfEndInput): Promise<void> {
+export async function recordLastShotOfEnd(
+  db: DrizzleD1Database,
+  input: RecordLastShotOfEndInput,
+): Promise<void> {
   const statements: BatchItem<"sqlite">[] = [
     db
       .update(score)
@@ -563,7 +680,10 @@ export async function recordLastShotOfEnd(db: DrizzleD1Database, input: RecordLa
       .where(eq(score.scoreId, input.scoreData.scoreId)),
     ...shotInfoInsertStatements(db, input.shotInfo),
     ...stateInsertStatements(db, input.postState),
-    db.update(state).set({ shotId: input.shotInfo.shotId }).where(eq(state.stateId, input.preStateId)),
+    db
+      .update(state)
+      .set({ shotId: input.shotInfo.shotId })
+      .where(eq(state.stateId, input.preStateId)),
   ];
 
   if (input.nextEndInitialState) {
@@ -580,7 +700,9 @@ export async function recordLastShotOfEnd(db: DrizzleD1Database, input: RecordLa
     } else if (nextEndNumber === selectorList.length) {
       selectorList.push(input.nextEndSelectorTeamId);
     } else {
-      throw new Error(`end_setup_team_ids has a gap at index ${nextEndNumber}; current length=${selectorList.length}`);
+      throw new Error(
+        `end_setup_team_ids has a gap at index ${nextEndNumber}; current length=${selectorList.length}`,
+      );
     }
     statements.push(
       db
@@ -620,8 +742,10 @@ export async function performMixedDoublesEndSetup(
   input: PerformEndSetupInput,
 ): Promise<{ stateId: string }> {
   const { matchData: md, latestState, matchTeamName, request } = input;
-  const callerTeamId = matchTeamName === "team0" ? md.firstTeamId : md.secondTeamId;
-  const otherTeamId = matchTeamName === "team0" ? md.secondTeamId : md.firstTeamId;
+  const callerTeamId =
+    matchTeamName === "team0" ? md.firstTeamId : md.secondTeamId;
+  const otherTeamId =
+    matchTeamName === "team0" ? md.secondTeamId : md.firstTeamId;
   const otherTeamName: TeamName = matchTeamName === "team0" ? "team1" : "team0";
 
   const settingsRow = await readMixedDoublesSettingsRow(db, md.matchId);
@@ -637,7 +761,9 @@ export async function performMixedDoublesEndSetup(
   const currentEnd = latestState.endNumber;
   if (currentEnd < 0) throw new EndSetupValueError("Invalid end_number");
   if (currentEnd >= selectorList.length) {
-    throw new EndSetupValueError("end_setup_team_ids is missing entries for current end.");
+    throw new EndSetupValueError(
+      "end_setup_team_ids is missing entries for current end.",
+    );
   }
 
   const expectedSelectorTeamId = selectorList[currentEnd];
@@ -676,7 +802,8 @@ export async function performMixedDoublesEndSetup(
   let team1PowerPlayEnd = settingsRow.team1PowerPlayEnd;
 
   if (powerPlayRequested) {
-    const usedEnd = matchTeamName === "team0" ? team0PowerPlayEnd : team1PowerPlayEnd;
+    const usedEnd =
+      matchTeamName === "team0" ? team0PowerPlayEnd : team1PowerPlayEnd;
     if (usedEnd !== null) {
       // Do not block the match if client mistakenly requests power play twice; fall back to center_house.
       powerPlaySide = null;
@@ -689,13 +816,22 @@ export async function performMixedDoublesEndSetup(
     }
   }
 
-  const hammerTeamName: TeamName = selectorIsHammer ? matchTeamName : otherTeamName;
-  const firstThrowTeamId: string | null = selectorIsHammer ? otherTeamId : callerTeamId;
+  const hammerTeamName: TeamName = selectorIsHammer
+    ? matchTeamName
+    : otherTeamName;
+  const firstThrowTeamId: string | null = selectorIsHammer
+    ? otherTeamId
+    : callerTeamId;
 
   const pattern = md.mixedDoublesSettings?.positionedStonesPattern ?? 0;
-  const stoneData = generateMixedDoublesInitialStones(hammerTeamName, powerPlaySide, pattern, {
-    hammerStonePosition: "house",
-  });
+  const stoneData = generateMixedDoublesInitialStones(
+    hammerTeamName,
+    powerPlaySide,
+    pattern,
+    {
+      hammerStonePosition: "house",
+    },
+  );
 
   const setupStateId = generateUuid7();
   const stoneCoordinateId = generateUuid7();
@@ -711,8 +847,10 @@ export async function performMixedDoublesEndSetup(
       totalShotNumber: 0,
       firstTeamRemainingTime: latestState.firstTeamRemainingTime,
       secondTeamRemainingTime: latestState.secondTeamRemainingTime,
-      firstTeamExtraEndRemainingTime: latestState.firstTeamExtraEndRemainingTime,
-      secondTeamExtraEndRemainingTime: latestState.secondTeamExtraEndRemainingTime,
+      firstTeamExtraEndRemainingTime:
+        latestState.firstTeamExtraEndRemainingTime,
+      secondTeamExtraEndRemainingTime:
+        latestState.secondTeamExtraEndRemainingTime,
       stoneCoordinateId,
       scoreId: latestState.scoreId,
       shotId: null,
@@ -721,7 +859,10 @@ export async function performMixedDoublesEndSetup(
     }),
   ];
 
-  if (team0PowerPlayEnd !== settingsRow.team0PowerPlayEnd || team1PowerPlayEnd !== settingsRow.team1PowerPlayEnd) {
+  if (
+    team0PowerPlayEnd !== settingsRow.team0PowerPlayEnd ||
+    team1PowerPlayEnd !== settingsRow.team1PowerPlayEnd
+  ) {
     statements.push(
       db
         .update(matchMixedDoublesSettings)

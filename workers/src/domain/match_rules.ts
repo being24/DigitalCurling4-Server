@@ -31,11 +31,15 @@ export const HOUSE_RADIUS = 1.829;
 export const STONE_RADIUS = 0.145;
 export const SCORE_DISTANCE = HOUSE_RADIUS + STONE_RADIUS;
 
-export const MD_POSITIONED_STONE_IN_HOUSE: readonly [number, number] = [0.0, 38.87];
+export const MD_POSITIONED_STONE_IN_HOUSE: readonly [number, number] = [
+  0.0, 38.87,
+];
 export const MD_POWER_PLAY_IN_HOUSE: readonly [number, number] = [1.219, 38.26];
 
 // Pattern index (0-5) matches positionedStonesPattern.
-export const MD_POSITIONED_STONE_GUARD: ReadonlyArray<readonly [number, number]> = [
+export const MD_POSITIONED_STONE_GUARD: ReadonlyArray<
+  readonly [number, number]
+> = [
   [0.0, 35.35],
   [0.0, 35.06],
   [0.0, 34.435],
@@ -70,7 +74,9 @@ export function totalShotsPerEnd(gameMode: GameMode): number {
 }
 
 /** Generate initial stone coordinate dict for a new end. */
-export function generateResetStoneCoordinateData(gameMode: GameMode): StoneCoordinateData {
+export function generateResetStoneCoordinateData(
+  gameMode: GameMode,
+): StoneCoordinateData {
   const count = stoneCountPerTeam(gameMode);
   return {
     team0: Array.from({ length: count }, () => ({ x: 0.0, y: 0.0 })),
@@ -143,7 +149,8 @@ export function generateMixedDoublesInitialStones(
     team1: Array.from({ length: 8 }, () => ({ x: 0.0, y: 0.0 })),
   };
 
-  const nonHammerTeamName: TeamName = hammerTeamName === "team0" ? "team1" : "team0";
+  const nonHammerTeamName: TeamName =
+    hammerTeamName === "team0" ? "team1" : "team0";
 
   let houseX: number;
   let houseY: number;

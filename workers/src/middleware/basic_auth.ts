@@ -1,10 +1,10 @@
-import { basicAuth } from "hono/basic-auth";
-import type { Context } from "hono";
-import { drizzle } from "drizzle-orm/d1";
 import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/d1";
+import type { Context } from "hono";
+import { basicAuth } from "hono/basic-auth";
 import { users } from "../db/schema";
-import { hashPassword, timingSafeEqual } from "../lib/auth";
 import type { Bindings } from "../env";
+import { hashPassword, timingSafeEqual } from "../lib/auth";
 
 /**
  * `src/authentication/basic_authentication.py::check_user_data`の移植。
@@ -25,7 +25,7 @@ export const requireBasicAuth = basicAuth({
       .where(eq(users.username, username))
       .limit(1);
     const user = rows[0];
-    if (!user || !user.hashPassword || !user.salt) {
+    if (!user?.hashPassword || !user.salt) {
       return false;
     }
     const hashed = await hashPassword(password, user.salt, c.env.PEPPER_DATA);

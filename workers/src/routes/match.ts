@@ -1,28 +1,27 @@
-import { Hono } from "hono";
-import type { Context } from "hono";
 import { drizzle } from "drizzle-orm/d1";
+import type { Context } from "hono";
+import { Hono } from "hono";
 import { auth as parseBasicAuth } from "hono/utils/basic-auth";
-import type { Bindings } from "../env";
-import { requireBasicAuth } from "../middleware/basic_auth";
-import { generateUuid7 } from "../lib/uuid7";
-import { distortShot } from "../lib/random";
+import type { GameMode } from "../domain/match_rules";
 import {
   calculateTotalScore,
   generateResetStoneCoordinateData,
   getScoreFromDistanceList,
+  totalShotsPerEnd as getTotalShotsPerEnd,
   stoneCountPerTeam,
   stoneDistanceFromTee,
-  totalShotsPerEnd as getTotalShotsPerEnd,
 } from "../domain/match_rules";
-import type { GameMode } from "../domain/match_rules";
-import { callSimulateJson } from "../simulate";
-import { readLatestStateData } from "../services/match_room_queries";
+import type { Bindings } from "../env";
+import { distortShot } from "../lib/random";
+import { generateUuid7 } from "../lib/uuid7";
+import { requireBasicAuth } from "../middleware/basic_auth";
 import {
   createMatchAuth,
   createMatchData,
   createPlayerData,
   createStateData,
   EndSetupValueError,
+  type MatchDataRow,
   performMixedDoublesEndSetup,
   readMatchAuthTeamName,
   readMatchData,
@@ -33,14 +32,15 @@ import {
   readUserHashPassword,
   recordLastShotOfEnd,
   recordShotResult,
+  type StateInsertRow,
   setEndSetupTeamForEnd,
   updateFirstTeam,
   updateMatchDataWithTeamName,
   updateNextShotTeam,
   updateSecondTeam,
-  type MatchDataRow,
-  type StateInsertRow,
 } from "../repositories/match";
+import { readLatestStateData } from "../services/match_room_queries";
+import { callSimulateJson } from "../simulate";
 
 /**
  * `src/routers/match.py`相当。試合作成・team-config登録・投球処理・mixed doubles end-setupの
@@ -70,7 +70,9 @@ function unauthorized(c: Context, detail: string) {
   return c.json({ detail }, 401);
 }
 
-function requireAuthUser(c: Context): { username: string; password: string } | null {
+function requireAuthUser(
+  c: Context,
+): { username: string; password: string } | null {
   return parseBasicAuth(c.req.raw) ?? null;
 }
 
@@ -91,12 +93,17 @@ interface ClientDataBody {
 function parseClientDataBody(raw: unknown): ClientDataBody | null {
   if (typeof raw !== "object" || raw === null) return null;
   const o = raw as Record<string, unknown>;
-  if (o.game_mode !== "standard" && o.game_mode !== "mixed_doubles") return null;
+  if (o.game_mode !== "standard" && o.game_mode !== "mixed_doubles")
+    return null;
   const t = o.tournament as Record<string, unknown> | undefined;
   const s = o.simulator as Record<string, unknown> | undefined;
   if (typeof t?.tournament_name !== "string") return null;
   if (typeof s?.simulator_name !== "string") return null;
-  if (o.applied_rule !== "fgz_rule" && o.applied_rule !== "no_tick_rule" && o.applied_rule !== "modified_fgz_rule") {
+  if (
+    o.applied_rule !== "fgz_rule" &&
+    o.applied_rule !== "no_tick_rule" &&
+    o.applied_rule !== "modified_fgz_rule"
+  ) {
     return null;
   }
   if (typeof o.time_limit !== "number") return null;
@@ -104,7 +111,9 @@ function parseClientDataBody(raw: unknown): ClientDataBody | null {
   if (typeof o.standard_end_count !== "number") return null;
   if (typeof o.match_name !== "string") return null;
   const positionedStonesPattern =
-    typeof o.positioned_stones_pattern === "number" ? o.positioned_stones_pattern : null;
+    typeof o.positioned_stones_pattern === "number"
+      ? o.positioned_stones_pattern
+      : null;
   return {
     game_mode: o.game_mode,
     tournament: { tournament_name: t.tournament_name },
@@ -128,11 +137,17 @@ matchRoutes.post("/matches", async (c) => {
 
   let positionedStonesPattern = body.positioned_stones_pattern;
   if (isMixedDoubles) {
-    if (positionedStonesPattern === null || positionedStonesPattern === undefined) {
+    if (
+      positionedStonesPattern === null ||
+      positionedStonesPattern === undefined
+    ) {
       positionedStonesPattern = 0;
     }
     if (positionedStonesPattern < 0 || positionedStonesPattern > 5) {
-      return badRequest(c, "positioned_stones_pattern must be between 0 and 5.");
+      return badRequest(
+        c,
+        "positioned_stones_pattern must be between 0 and 5.",
+      );
     }
   }
 
@@ -144,7 +159,10 @@ matchRoutes.post("/matches", async (c) => {
     return badRequest(c, 'Mixed doubles only supports "modified_fgz_rule".');
   }
   if (!isMixedDoubles && appliedRuleName === "modified_fgz_rule") {
-    return badRequest(c, 'Standard game mode does not support "modified_fgz_rule".');
+    return badRequest(
+      c,
+      'Standard game mode does not support "modified_fgz_rule".',
+    );
   }
 
   let appliedRule: number;
@@ -184,7 +202,10 @@ matchRoutes.post("/matches", async (c) => {
     createdAt: now,
     startedAt: now,
     mixedDoublesSettings: isMixedDoubles
-      ? { positionedStonesPattern: positionedStonesPattern as number, endSetupTeamIds: [DEFAULT_SECOND_TEAM_ID] }
+      ? {
+          positionedStonesPattern: positionedStonesPattern as number,
+          endSetupTeamIds: [DEFAULT_SECOND_TEAM_ID],
+        }
       : null,
   });
 
@@ -247,8 +268,10 @@ function parseTeamConfigBody(raw: unknown): TeamConfigBody | null {
   if (typeof o.use_default_config !== "boolean") return null;
   if (typeof o.team_name !== "string") return null;
   if (!isPlayerBody(o.player1) || !isPlayerBody(o.player2)) return null;
-  const player3 = o.player3 == null ? null : isPlayerBody(o.player3) ? o.player3 : undefined;
-  const player4 = o.player4 == null ? null : isPlayerBody(o.player4) ? o.player4 : undefined;
+  const player3 =
+    o.player3 == null ? null : isPlayerBody(o.player3) ? o.player3 : undefined;
+  const player4 =
+    o.player4 == null ? null : isPlayerBody(o.player4) ? o.player4 : undefined;
   if (player3 === undefined || player4 === undefined) return null;
   return {
     use_default_config: o.use_default_config,
@@ -277,24 +300,44 @@ matchRoutes.post("/store-team-config", async (c) => {
 
   const matchData = await readMatchData(db, matchId);
 
-  let matchTeamName = await updateMatchDataWithTeamName(db, matchId, body.team_name, expectedMatchTeamName);
+  let matchTeamName = await updateMatchDataWithTeamName(
+    db,
+    matchId,
+    body.team_name,
+    expectedMatchTeamName,
+  );
 
   if (matchTeamName === null) {
     // To reconnect this match, check if the client is the same as the one who started the match.
-    const reconnectTeamName = await readMatchAuthTeamName(db, authUser.username, matchId);
-    if (reconnectTeamName === null) return conflict(c, "This match has already started.");
+    const reconnectTeamName = await readMatchAuthTeamName(
+      db,
+      authUser.username,
+      matchId,
+    );
+    if (reconnectTeamName === null)
+      return conflict(c, "This match has already started.");
     matchTeamName = reconnectTeamName;
   } else {
     const hashPassword = await readUserHashPassword(db, authUser.username);
     if (hashPassword) {
-      await createMatchAuth(db, authUser.username, hashPassword, matchTeamName, matchId);
+      await createMatchAuth(
+        db,
+        authUser.username,
+        hashPassword,
+        matchTeamName,
+        matchId,
+      );
     }
   }
 
-  const isMixedDoubles = matchData !== null && matchData.gameMode === "mixed_doubles";
+  const isMixedDoubles =
+    matchData !== null && matchData.gameMode === "mixed_doubles";
 
   if (isMixedDoubles && (body.player3 !== null || body.player4 !== null)) {
-    return badRequest(c, "Mixed doubles uses only player1/player2; player3/player4 must be omitted.");
+    return badRequest(
+      c,
+      "Mixed doubles uses only player1/player2; player3/player4 must be omitted.",
+    );
   }
 
   if (body.use_default_config) {
@@ -309,7 +352,12 @@ matchRoutes.post("/store-team-config", async (c) => {
 
   const playerModels: PlayerBody[] = isMixedDoubles
     ? [body.player1, body.player2]
-    : [body.player1, body.player2, body.player3 as PlayerBody, body.player4 as PlayerBody];
+    : [
+        body.player1,
+        body.player2,
+        body.player3 as PlayerBody,
+        body.player4 as PlayerBody,
+      ];
 
   let teamId = await readTeamId(db, body.team_name);
   if (teamId === null) teamId = crypto.randomUUID();
@@ -418,7 +466,10 @@ async function simulateShot(params: {
     angular_velocities: params.angularVelocity,
   });
   const { result } = await callSimulateJson(inputJson);
-  const parsed = JSON.parse(result) as { stones?: [number, number][]; error?: string };
+  const parsed = JSON.parse(result) as {
+    stones?: [number, number][];
+    error?: string;
+  };
   if (!parsed.stones) {
     throw new Error(`simulate_json failed: ${parsed.error ?? "unknown error"}`);
   }
@@ -470,18 +521,29 @@ matchRoutes.post("/shots", async (c) => {
 
   const matchData = await readMatchData(db, matchId);
   const preState = await readLatestStateData(db, matchId);
-  if (matchData === null || preState === null) return notFound(c, "Match or state not found.");
+  if (matchData === null || preState === null)
+    return notFound(c, "Match or state not found.");
 
-  if (preState.stateRow.winnerTeamId !== null) return conflict(c, "Match already finished.");
-  if (preState.stateRow.nextShotTeamId === null) return conflict(c, "End setup required.");
-  if (preState.stateRow.totalShotNumber === null) return conflict(c, "End setup required.");
+  if (preState.stateRow.winnerTeamId !== null)
+    return conflict(c, "Match already finished.");
+  if (preState.stateRow.nextShotTeamId === null)
+    return conflict(c, "End setup required.");
+  if (preState.stateRow.totalShotNumber === null)
+    return conflict(c, "End setup required.");
 
   const authUser = requireAuthUser(c);
   if (!authUser) return unauthorized(c, "Invalid credentials");
-  const matchTeamName = await readMatchAuthTeamName(db, authUser.username, matchId);
+  const matchTeamName = await readMatchAuthTeamName(
+    db,
+    authUser.username,
+    matchId,
+  );
   if (matchTeamName === null) return unauthorized(c, "Invalid match data");
 
-  const shotTeamName = preState.stateRow.nextShotTeamId === matchData.firstTeamId ? "team0" : "team1";
+  const shotTeamName =
+    preState.stateRow.nextShotTeamId === matchData.firstTeamId
+      ? "team0"
+      : "team1";
   if (shotTeamName !== matchTeamName) return conflict(c, "Not your turn.");
 
   const shotTeamId = preState.stateRow.nextShotTeamId as string;
@@ -516,7 +578,10 @@ matchRoutes.post("/shots", async (c) => {
       matchData.secondTeamPlayer3Id,
       matchData.secondTeamPlayer4Id,
     ];
-    playerId = matchTeamName === "team0" ? firstTeamPlayerIds[playerNumber - 1] : secondTeamPlayerIds[playerNumber - 1];
+    playerId =
+      matchTeamName === "team0"
+        ? firstTeamPlayerIds[playerNumber - 1]
+        : secondTeamPlayerIds[playerNumber - 1];
   }
   if (!playerId) return notFound(c, "Player not found.");
 
@@ -541,8 +606,10 @@ matchRoutes.post("/shots", async (c) => {
 
   let team0RemainingTime = preState.stateRow.firstTeamRemainingTime;
   let team1RemainingTime = preState.stateRow.secondTeamRemainingTime;
-  let team0ExtraEndRemainingTime = preState.stateRow.firstTeamExtraEndRemainingTime;
-  let team1ExtraEndRemainingTime = preState.stateRow.secondTeamExtraEndRemainingTime;
+  let team0ExtraEndRemainingTime =
+    preState.stateRow.firstTeamExtraEndRemainingTime;
+  let team1ExtraEndRemainingTime =
+    preState.stateRow.secondTeamExtraEndRemainingTime;
   let winnerTeamId: string | null = null;
 
   if (preState.stateRow.endNumber < matchData.standardEndCount) {
@@ -575,9 +642,13 @@ matchRoutes.post("/shots", async (c) => {
     }
   }
 
-  const position = buildPositionArray(preState.stoneCoordinateData as TeamStoneCoordinateData);
-  const velocityX = distorted.translationalVelocity * Math.cos(distorted.shotAngle);
-  const velocityY = distorted.translationalVelocity * Math.sin(distorted.shotAngle);
+  const position = buildPositionArray(
+    preState.stoneCoordinateData as TeamStoneCoordinateData,
+  );
+  const velocityX =
+    distorted.translationalVelocity * Math.cos(distorted.shotAngle);
+  const velocityY =
+    distorted.translationalVelocity * Math.sin(distorted.shotAngle);
 
   const simulated = await simulateShot({
     position,
@@ -594,7 +665,9 @@ matchRoutes.post("/shots", async (c) => {
   shotPerTeam = Math.floor(totalShotNumber / 2);
 
   let nextShotTeamId: string | null =
-    shotTeamId === matchData.secondTeamId ? matchData.firstTeamId : matchData.secondTeamId;
+    shotTeamId === matchData.secondTeamId
+      ? matchData.firstTeamId
+      : matchData.secondTeamId;
 
   const shotInfoData = {
     shotId: generateUuid7(),
@@ -620,7 +693,8 @@ matchRoutes.post("/shots", async (c) => {
   const totalShotsPerEnd = getTotalShotsPerEnd(matchData.gameMode as GameMode);
   let nextEndFirstShotTeamId: string | null = null;
   let nextEndSelectorTeamId: string | null = null;
-  let scoreData: { scoreId: string; team0: number[]; team1: number[] } | null = null;
+  let scoreData: { scoreId: string; team0: number[]; team1: number[] } | null =
+    null;
 
   if (totalShotNumber === totalShotsPerEnd) {
     nextShotTeamId = null;
@@ -629,13 +703,28 @@ matchRoutes.post("/shots", async (c) => {
 
     const distanceList: [number, number][] = [];
     for (let i = 0; i < stoneCount; i++) {
-      distanceList.push([0, stoneDistanceFromTee(stoneCoordinateData.team0[i].x, stoneCoordinateData.team0[i].y)]);
-      distanceList.push([1, stoneDistanceFromTee(stoneCoordinateData.team1[i].x, stoneCoordinateData.team1[i].y)]);
+      distanceList.push([
+        0,
+        stoneDistanceFromTee(
+          stoneCoordinateData.team0[i].x,
+          stoneCoordinateData.team0[i].y,
+        ),
+      ]);
+      distanceList.push([
+        1,
+        stoneDistanceFromTee(
+          stoneCoordinateData.team1[i].x,
+          stoneCoordinateData.team1[i].y,
+        ),
+      ]);
     }
     const [scoredTeam, points] = getScoreFromDistanceList(distanceList);
 
     if (scoredTeam === null) {
-      nextEndFirstShotTeamId = matchTeamName === "team1" ? matchData.firstTeamId : matchData.secondTeamId;
+      nextEndFirstShotTeamId =
+        matchTeamName === "team1"
+          ? matchData.firstTeamId
+          : matchData.secondTeamId;
     }
 
     if (matchData.gameMode === "mixed_doubles") {
@@ -651,7 +740,10 @@ matchRoutes.post("/shots", async (c) => {
       } else if (scoredTeam === 1) {
         nextEndSelectorTeamId = matchData.firstTeamId;
       } else {
-        nextEndSelectorTeamId = currentSelector === matchData.firstTeamId ? matchData.secondTeamId : matchData.firstTeamId;
+        nextEndSelectorTeamId =
+          currentSelector === matchData.firstTeamId
+            ? matchData.secondTeamId
+            : matchData.firstTeamId;
       }
     }
 
@@ -679,7 +771,11 @@ matchRoutes.post("/shots", async (c) => {
       }
     }
 
-    scoreData = { scoreId: preState.stateRow.scoreId, team0: team0Score, team1: team1Score };
+    scoreData = {
+      scoreId: preState.stateRow.scoreId,
+      team0: team0Score,
+      team1: team1Score,
+    };
 
     if (endNumber >= matchData.standardEndCount - 1) {
       const team0Total = calculateTotalScore(team0Score);
@@ -711,21 +807,33 @@ matchRoutes.post("/shots", async (c) => {
     shotId: null,
     nextShotTeamId,
     createdAt: new Date(),
-    stoneCoordinate: { stoneCoordinateId: generateUuid7(), data: stoneCoordinateData },
+    stoneCoordinate: {
+      stoneCoordinateId: generateUuid7(),
+      data: stoneCoordinateData,
+    },
   };
 
   if (totalShotNumber === totalShotsPerEnd) {
     const nextEndInitialState =
       winnerTeamId === null
-        ? buildNextEndInitialState(postState, matchData.gameMode as GameMode, nextEndFirstShotTeamId)
+        ? buildNextEndInitialState(
+            postState,
+            matchData.gameMode as GameMode,
+            nextEndFirstShotTeamId,
+          )
         : null;
     await recordLastShotOfEnd(db, {
       shotInfo: shotInfoData,
       postState,
       preStateId: preState.stateRow.stateId,
-      scoreData: scoreData as { scoreId: string; team0: number[]; team1: number[] },
+      scoreData: scoreData as {
+        scoreId: string;
+        team0: number[];
+        team1: number[];
+      },
       nextEndInitialState,
-      nextEndSelectorTeamId: winnerTeamId === null ? nextEndSelectorTeamId : null,
+      nextEndSelectorTeamId:
+        winnerTeamId === null ? nextEndSelectorTeamId : null,
       matchId,
     });
   } else {
@@ -748,23 +856,39 @@ matchRoutes.post("/matches/:matchId/end-setup", async (c) => {
   const db = drizzle(c.env.DB);
   const matchId = c.req.param("matchId");
   const request = c.req.query("request");
-  if (request !== "pp_left" && request !== "pp_right" && request !== "center_house" && request !== "center_guard") {
+  if (
+    request !== "pp_left" &&
+    request !== "pp_right" &&
+    request !== "center_house" &&
+    request !== "center_guard"
+  ) {
     return badRequest(c, "Invalid positioned_stones option.");
   }
 
   const authUser = requireAuthUser(c);
   if (!authUser) return unauthorized(c, "Invalid credentials");
-  const matchTeamName = await readMatchAuthTeamName(db, authUser.username, matchId);
+  const matchTeamName = await readMatchAuthTeamName(
+    db,
+    authUser.username,
+    matchId,
+  );
   if (matchTeamName === null) return unauthorized(c, "Invalid match data");
 
   const matchData: MatchDataRow | null = await readMatchData(db, matchId);
   const latestState = await readLatestStateData(db, matchId);
-  if (matchData === null || latestState === null) return notFound(c, "Match not found.");
+  if (matchData === null || latestState === null)
+    return notFound(c, "Match not found.");
 
-  if (matchData.gameMode !== "mixed_doubles") return badRequest(c, "end-setup is only for mixed_doubles.");
-  if (matchData.mixedDoublesSettings === null) return conflict(c, "Mixed doubles settings missing.");
-  if (latestState.stateRow.winnerTeamId !== null) return conflict(c, "Match already finished.");
-  if (latestState.stateRow.nextShotTeamId !== null || latestState.stateRow.totalShotNumber !== null) {
+  if (matchData.gameMode !== "mixed_doubles")
+    return badRequest(c, "end-setup is only for mixed_doubles.");
+  if (matchData.mixedDoublesSettings === null)
+    return conflict(c, "Mixed doubles settings missing.");
+  if (latestState.stateRow.winnerTeamId !== null)
+    return conflict(c, "Match already finished.");
+  if (
+    latestState.stateRow.nextShotTeamId !== null ||
+    latestState.stateRow.totalShotNumber !== null
+  ) {
     return conflict(c, "End already started.");
   }
 
@@ -775,8 +899,10 @@ matchRoutes.post("/matches/:matchId/end-setup", async (c) => {
         endNumber: latestState.stateRow.endNumber,
         firstTeamRemainingTime: latestState.stateRow.firstTeamRemainingTime,
         secondTeamRemainingTime: latestState.stateRow.secondTeamRemainingTime,
-        firstTeamExtraEndRemainingTime: latestState.stateRow.firstTeamExtraEndRemainingTime,
-        secondTeamExtraEndRemainingTime: latestState.stateRow.secondTeamExtraEndRemainingTime,
+        firstTeamExtraEndRemainingTime:
+          latestState.stateRow.firstTeamExtraEndRemainingTime,
+        secondTeamExtraEndRemainingTime:
+          latestState.stateRow.secondTeamExtraEndRemainingTime,
         scoreId: latestState.stateRow.scoreId,
       },
       matchTeamName,

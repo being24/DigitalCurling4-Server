@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  SCORE_DISTANCE,
-  TEE_LINE,
   calculateTotalScore,
   generateMixedDoublesInitialStones,
   generateResetStoneCoordinateData,
   getScoreFromDistanceList,
+  SCORE_DISTANCE,
   stoneCountPerTeam,
   stoneDistanceFromTee,
+  TEE_LINE,
   totalShotsPerEnd,
 } from "./match_rules";
 
@@ -51,9 +51,7 @@ describe("generateMixedDoublesInitialStones", () => {
     expect(() =>
       generateMixedDoublesInitialStones("team0", null, -1),
     ).toThrow();
-    expect(() =>
-      generateMixedDoublesInitialStones("team0", null, 6),
-    ).toThrow();
+    expect(() => generateMixedDoublesInitialStones("team0", null, 6)).toThrow();
   });
 
   it("hammer gets house stone when hammerStonePosition='house'", () => {

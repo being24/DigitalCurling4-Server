@@ -1,8 +1,8 @@
 import { Hono } from "hono";
 import type { Bindings } from "./env";
-import { handleSimulate } from "./simulate";
-import { restapiRoutes } from "./routes/restapi";
 import { matchRoutes } from "./routes/match";
+import { restapiRoutes } from "./routes/restapi";
+import { handleSimulate } from "./simulate";
 
 export const app = new Hono<{ Bindings: Bindings }>();
 

@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createFakeD1Database } from "../test-utils/fake-d1";
 import { hashPassword } from "../lib/auth";
+import { createFakeD1Database } from "../test-utils/fake-d1";
 
 // vitestはプレーンなVite環境で`.wasm`の直接importをロードできないため、
 // `../simulate`をモック化してWasmシミュレータへの依存を切り離す
@@ -16,7 +16,10 @@ vi.mock("../simulate", () => ({
     for (let i = 1; i < 8; i++) stones.push([100, 100]);
     // team1: 全て遠方
     for (let i = 0; i < 8; i++) stones.push([200, 200]);
-    return { result: JSON.stringify({ stones, trajectory_steps: 10 }), elapsedMs: 1 };
+    return {
+      result: JSON.stringify({ stones, trajectory_steps: 10 }),
+      elapsedMs: 1,
+    };
   }),
 }));
 
@@ -24,7 +27,10 @@ const { matchRoutes } = await import("./match");
 const { Hono } = await import("hono");
 const { drizzle } = await import("drizzle-orm/d1");
 
-const schemaSql = readFileSync(join(__dirname, "../../drizzle/0000_furry_toro.sql"), "utf-8");
+const schemaSql = readFileSync(
+  join(__dirname, "../../drizzle/0000_furry_toro.sql"),
+  "utf-8",
+);
 
 const PEPPER = "test-pepper";
 
@@ -36,27 +42,39 @@ function buildApp() {
   const app = new Hono();
   app.route("/", matchRoutes);
   const env = {
-    // biome-ignore lint: fake D1 shim is structurally compatible with what drizzle-orm/d1 uses
+    // fake D1 shim is structurally compatible with what drizzle-orm/d1 uses
     DB: db as never,
     PEPPER_DATA: PEPPER,
     MATCH_ROOM: {
       getByName: () => ({ notifyTeamConfigUpdated, pushStateUpdate }),
     },
   };
-  return { app, env, db: drizzle(db as never), notifyTeamConfigUpdated, pushStateUpdate };
+  return {
+    app,
+    env,
+    db: drizzle(db as never),
+    notifyTeamConfigUpdated,
+    pushStateUpdate,
+  };
 }
 
-async function seedUser(rawDb: ReturnType<typeof createFakeD1Database>, username: string, password: string) {
-  const salt = "salt-" + username;
+async function seedUser(
+  rawDb: ReturnType<typeof createFakeD1Database>,
+  username: string,
+  password: string,
+) {
+  const salt = `salt-${username}`;
   const hash = await hashPassword(password, salt, PEPPER);
   await rawDb
-    .prepare("INSERT INTO users (username, hash_password, salt) VALUES (?, ?, ?)")
+    .prepare(
+      "INSERT INTO users (username, hash_password, salt) VALUES (?, ?, ?)",
+    )
     .bind(username, hash, salt)
     .run();
 }
 
 function basicAuthHeader(username: string, password: string): string {
-  return "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
+  return `Basic ${Buffer.from(`${username}:${password}`).toString("base64")}`;
 }
 
 describe("matchRoutes", () => {
@@ -64,9 +82,13 @@ describe("matchRoutes", () => {
 
   beforeEach(async () => {
     ctx = buildApp();
-    const rawDb = ctx.env.DB as unknown as ReturnType<typeof createFakeD1Database>;
+    const rawDb = ctx.env.DB as unknown as ReturnType<
+      typeof createFakeD1Database
+    >;
     await rawDb
-      .prepare("INSERT INTO physical_simulator (physical_simulator_id, simulator_name) VALUES (?, ?)")
+      .prepare(
+        "INSERT INTO physical_simulator (physical_simulator_id, simulator_name) VALUES (?, ?)",
+      )
       .bind("sim-fcv1", "fcv1")
       .run();
     await seedUser(rawDb, "alice", "alice-pw");
@@ -91,7 +113,10 @@ describe("matchRoutes", () => {
       "/matches",
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: basicAuthHeader("alice", "alice-pw") },
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
         body: JSON.stringify({
           game_mode: "standard",
           tournament: { tournament_name: "test-cup" },
@@ -112,17 +137,40 @@ describe("matchRoutes", () => {
     const teamConfigBody = (teamName: string) => ({
       use_default_config: false,
       team_name: teamName,
-      player1: { max_velocity: 4.0, shot_std_dev: 0.0076, angle_std_dev: 0.0018, player_name: "p1" },
-      player2: { max_velocity: 4.0, shot_std_dev: 0.0076, angle_std_dev: 0.0018, player_name: "p2" },
-      player3: { max_velocity: 4.0, shot_std_dev: 0.0076, angle_std_dev: 0.0018, player_name: "p3" },
-      player4: { max_velocity: 4.0, shot_std_dev: 0.0076, angle_std_dev: 0.0018, player_name: "p4" },
+      player1: {
+        max_velocity: 4.0,
+        shot_std_dev: 0.0076,
+        angle_std_dev: 0.0018,
+        player_name: "p1",
+      },
+      player2: {
+        max_velocity: 4.0,
+        shot_std_dev: 0.0076,
+        angle_std_dev: 0.0018,
+        player_name: "p2",
+      },
+      player3: {
+        max_velocity: 4.0,
+        shot_std_dev: 0.0076,
+        angle_std_dev: 0.0018,
+        player_name: "p3",
+      },
+      player4: {
+        max_velocity: 4.0,
+        shot_std_dev: 0.0076,
+        angle_std_dev: 0.0018,
+        player_name: "p4",
+      },
     });
 
     const team0Res = await ctx.app.request(
       `/store-team-config?match_id=${matchId}&expected_match_team_name=team0`,
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: basicAuthHeader("alice", "alice-pw") },
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
         body: JSON.stringify(teamConfigBody("Team Alice")),
       },
       ctx.env,
@@ -134,7 +182,10 @@ describe("matchRoutes", () => {
       `/store-team-config?match_id=${matchId}&expected_match_team_name=team1`,
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: basicAuthHeader("bob", "bob-pw") },
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("bob", "bob-pw"),
+        },
         body: JSON.stringify(teamConfigBody("Team Bob")),
       },
       ctx.env,
@@ -148,13 +199,23 @@ describe("matchRoutes", () => {
       `/shots?match_id=${matchId}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: basicAuthHeader("alice", "alice-pw") },
-        body: JSON.stringify({ translational_velocity: 2.5, angular_velocity: 1.5707, shot_angle: 1.5707 }),
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify({
+          translational_velocity: 2.5,
+          angular_velocity: 1.5707,
+          shot_angle: 1.5707,
+        }),
       },
       ctx.env,
     );
     const shotBody = await shotRes.text();
-    expect(shotRes.status, `expected 200, got ${shotRes.status}: ${shotBody}`).toBe(200);
+    expect(
+      shotRes.status,
+      `expected 200, got ${shotRes.status}: ${shotBody}`,
+    ).toBe(200);
     expect(ctx.pushStateUpdate).toHaveBeenCalledTimes(1);
 
     const { state, shotInfo } = await import("../db/schema");
@@ -175,7 +236,10 @@ describe("matchRoutes", () => {
       "/matches",
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: basicAuthHeader("alice", "alice-pw") },
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
         body: JSON.stringify({
           game_mode: "standard",
           tournament: { tournament_name: "test-cup" },
@@ -194,17 +258,40 @@ describe("matchRoutes", () => {
     const teamConfigBody = (teamName: string) => ({
       use_default_config: true,
       team_name: teamName,
-      player1: { max_velocity: 4.0, shot_std_dev: 0.0076, angle_std_dev: 0.0018, player_name: "p1" },
-      player2: { max_velocity: 4.0, shot_std_dev: 0.0076, angle_std_dev: 0.0018, player_name: "p2" },
-      player3: { max_velocity: 4.0, shot_std_dev: 0.0076, angle_std_dev: 0.0018, player_name: "p3" },
-      player4: { max_velocity: 4.0, shot_std_dev: 0.0076, angle_std_dev: 0.0018, player_name: "p4" },
+      player1: {
+        max_velocity: 4.0,
+        shot_std_dev: 0.0076,
+        angle_std_dev: 0.0018,
+        player_name: "p1",
+      },
+      player2: {
+        max_velocity: 4.0,
+        shot_std_dev: 0.0076,
+        angle_std_dev: 0.0018,
+        player_name: "p2",
+      },
+      player3: {
+        max_velocity: 4.0,
+        shot_std_dev: 0.0076,
+        angle_std_dev: 0.0018,
+        player_name: "p3",
+      },
+      player4: {
+        max_velocity: 4.0,
+        shot_std_dev: 0.0076,
+        angle_std_dev: 0.0018,
+        player_name: "p4",
+      },
     });
 
     await ctx.app.request(
       `/store-team-config?match_id=${matchId}&expected_match_team_name=team0`,
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: basicAuthHeader("alice", "alice-pw") },
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
         body: JSON.stringify(teamConfigBody("Team Alice")),
       },
       ctx.env,
@@ -213,7 +300,10 @@ describe("matchRoutes", () => {
       `/store-team-config?match_id=${matchId}&expected_match_team_name=team1`,
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: basicAuthHeader("bob", "bob-pw") },
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("bob", "bob-pw"),
+        },
         body: JSON.stringify(teamConfigBody("Team Bob")),
       },
       ctx.env,
@@ -223,8 +313,15 @@ describe("matchRoutes", () => {
       `/shots?match_id=${matchId}`,
       {
         method: "POST",
-        headers: { "content-type": "application/json", authorization: basicAuthHeader("bob", "bob-pw") },
-        body: JSON.stringify({ translational_velocity: 2.5, angular_velocity: 1.5707, shot_angle: 1.5707 }),
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("bob", "bob-pw"),
+        },
+        body: JSON.stringify({
+          translational_velocity: 2.5,
+          angular_velocity: 1.5707,
+          shot_angle: 1.5707,
+        }),
       },
       ctx.env,
     );

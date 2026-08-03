@@ -1,7 +1,7 @@
-import { Hono } from "hono";
-import { drizzle } from "drizzle-orm/d1";
 import type { DrizzleD1Database } from "drizzle-orm/d1";
+import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
+import { Hono } from "hono";
 import type { Bindings } from "../env";
 import {
   collectStateIds,
@@ -47,7 +47,10 @@ export function parseIntParam(value: string): number | null {
   return Number.parseInt(value, 10);
 }
 
-async function resolveMatchIdByNameOrError(c: Context, db: DrizzleD1Database): Promise<string | Response> {
+async function resolveMatchIdByNameOrError(
+  c: Context,
+  db: DrizzleD1Database,
+): Promise<string | Response> {
   const matchName = requiredQuery(c, "match_name");
   if (matchName === null) {
     return badRequest(c, "match_name is required.");
@@ -75,7 +78,8 @@ restapiRoutes.get("/matches/by-name/score", async (c) => {
   const matchId = await resolveMatchIdByNameOrError(c, db);
   if (matchId instanceof Response) return matchId;
   const matchData = await readMatchData(db, matchId);
-  if (matchData === null || matchData.score === null) return notFound(c, "Match not found.");
+  if (matchData === null || matchData.score === null)
+    return notFound(c, "Match not found.");
   return c.json(matchData.score);
 });
 
@@ -96,7 +100,9 @@ restapiRoutes.get("/matches/by-name/ends", async (c) => {
   if (matchId instanceof Response) return matchId;
   const latestState = await readLatestStateData(db, matchId);
   if (latestState === null) return notFound(c, "Match not found.");
-  return c.json(Array.from({ length: (latestState.end_number ?? 0) + 1 }, (_, i) => i));
+  return c.json(
+    Array.from({ length: (latestState.end_number ?? 0) + 1 }, (_, i) => i),
+  );
 });
 
 restapiRoutes.get("/matches/by-name/latest-state", async (c) => {
@@ -136,7 +142,8 @@ restapiRoutes.get("/matches/:matchId", async (c) => {
 restapiRoutes.get("/matches/:matchId/score", async (c) => {
   const db = drizzle(c.env.DB);
   const matchData = await readMatchData(db, c.req.param("matchId"));
-  if (matchData === null || matchData.score === null) return notFound(c, "Match not found.");
+  if (matchData === null || matchData.score === null)
+    return notFound(c, "Match not found.");
   return c.json(matchData.score);
 });
 
@@ -153,7 +160,9 @@ restapiRoutes.get("/matches/:matchId/ends", async (c) => {
   const db = drizzle(c.env.DB);
   const latestState = await readLatestStateData(db, c.req.param("matchId"));
   if (latestState === null) return notFound(c, "Match not found.");
-  return c.json(Array.from({ length: (latestState.end_number ?? 0) + 1 }, (_, i) => i));
+  return c.json(
+    Array.from({ length: (latestState.end_number ?? 0) + 1 }, (_, i) => i),
+  );
 });
 
 restapiRoutes.get("/matches/:matchId/latest-state", async (c) => {
@@ -167,7 +176,9 @@ restapiRoutes.get("/matches/:matchId/ends/:endNumber/states", async (c) => {
   const db = drizzle(c.env.DB);
   const endNumber = parseIntParam(c.req.param("endNumber"));
   if (endNumber === null) return badRequest(c, "endNumber must be an integer.");
-  return c.json(await readStateDataInEnd(db, c.req.param("matchId"), endNumber));
+  return c.json(
+    await readStateDataInEnd(db, c.req.param("matchId"), endNumber),
+  );
 });
 
 // ---- MatchShotsAPI ----
@@ -182,17 +193,25 @@ restapiRoutes.get("/matches/:matchId/ends/:endNumber/shots", async (c) => {
   return c.json(await readShotsInEnd(db, matchId, endNumber));
 });
 
-restapiRoutes.get("/matches/:matchId/ends/:endNumber/shots/:totalShotNumber", async (c) => {
-  const db = drizzle(c.env.DB);
-  const endNumber = parseIntParam(c.req.param("endNumber"));
-  const totalShotNumber = parseIntParam(c.req.param("totalShotNumber"));
-  if (endNumber === null || totalShotNumber === null) {
-    return badRequest(c, "endNumber and totalShotNumber must be integers.");
-  }
-  const shotInfo = await readShotInEndByTotalShotNumber(db, c.req.param("matchId"), endNumber, totalShotNumber);
-  if (shotInfo === null) return notFound(c, "Shot info not found.");
-  return c.json(shotInfo);
-});
+restapiRoutes.get(
+  "/matches/:matchId/ends/:endNumber/shots/:totalShotNumber",
+  async (c) => {
+    const db = drizzle(c.env.DB);
+    const endNumber = parseIntParam(c.req.param("endNumber"));
+    const totalShotNumber = parseIntParam(c.req.param("totalShotNumber"));
+    if (endNumber === null || totalShotNumber === null) {
+      return badRequest(c, "endNumber and totalShotNumber must be integers.");
+    }
+    const shotInfo = await readShotInEndByTotalShotNumber(
+      db,
+      c.req.param("matchId"),
+      endNumber,
+      totalShotNumber,
+    );
+    if (shotInfo === null) return notFound(c, "Shot info not found.");
+    return c.json(shotInfo);
+  },
+);
 
 restapiRoutes.get("/matches/:matchId/shots/latest", async (c) => {
   const db = drizzle(c.env.DB);
@@ -240,7 +259,10 @@ restapiRoutes.get("/scores/:scoreId", async (c) => {
 
 restapiRoutes.get("/shots/by-post-state/:postStateId", async (c) => {
   const db = drizzle(c.env.DB);
-  const shotInfo = await readLastShotInfoByPostStateId(db, c.req.param("postStateId"));
+  const shotInfo = await readLastShotInfoByPostStateId(
+    db,
+    c.req.param("postStateId"),
+  );
   if (shotInfo === null) return notFound(c, "Shot info not found.");
   return c.json(shotInfo);
 });
@@ -264,8 +286,10 @@ restapiRoutes.get("/tournaments", async (c) => {
 restapiRoutes.get("/matches", async (c) => {
   const db = drizzle(c.env.DB);
   const tournamentName = requiredQuery(c, "tournament_name");
-  if (tournamentName === null) return badRequest(c, "tournament_name is required.");
+  if (tournamentName === null)
+    return badRequest(c, "tournament_name is required.");
   const matches = await readMatchesByTournamentName(db, tournamentName);
-  if (matches.length === 0) return notFound(c, "Tournament not found or has no matches.");
+  if (matches.length === 0)
+    return notFound(c, "Tournament not found or has no matches.");
   return c.json(matches);
 });

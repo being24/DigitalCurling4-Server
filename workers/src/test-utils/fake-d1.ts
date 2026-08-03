@@ -33,11 +33,17 @@ export function createFakeD1Database(schemaSql: string) {
         return { results: [] };
       },
       all: () => {
-        const rows = stmt.all(...(params as never[])) as Record<string, unknown>[];
+        const rows = stmt.all(...(params as never[])) as Record<
+          string,
+          unknown
+        >[];
         return { results: rows };
       },
       raw: () => {
-        const rows = stmt.all(...(params as never[])) as Record<string, unknown>[];
+        const rows = stmt.all(...(params as never[])) as Record<
+          string,
+          unknown
+        >[];
         return toRawRows(rows);
       },
     };
@@ -49,7 +55,9 @@ export function createFakeD1Database(schemaSql: string) {
         bind: (...params: unknown[]) => bindStatement(sql, params),
       };
     },
-    async batch(boundStatements: BoundStatement[]): Promise<{ results: unknown[] }[]> {
+    async batch(
+      boundStatements: BoundStatement[],
+    ): Promise<{ results: unknown[] }[]> {
       return boundStatements.map((bound) => bound.all());
     },
     // vitest上ではDrizzleD1Databaseの型と構造的に一致すれば十分なため、

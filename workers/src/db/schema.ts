@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
 
 /**
  * Postgres版(src/models/schemas.py)の全テーブルと、認証用SQLite
@@ -73,18 +73,21 @@ export const matchData = sqliteTable("match_data", {
   startedAt: integer("started_at", { mode: "timestamp" }),
 });
 
-export const matchMixedDoublesSettings = sqliteTable("match_mixed_doubles_settings", {
-  matchId: text("match_id")
-    .primaryKey()
-    .references(() => matchData.matchId, { onDelete: "cascade" }),
-  positionedStonesPattern: integer("positioned_stones_pattern").notNull(),
-  team0PowerPlayEnd: integer("team0_power_play_end"),
-  team1PowerPlayEnd: integer("team1_power_play_end"),
-  // Per-end selector(hammer) team_id list. Index corresponds to end_number.
-  endSetupTeamIds: text("end_setup_team_ids", { mode: "json" })
-    .$type<string[]>()
-    .notNull(),
-});
+export const matchMixedDoublesSettings = sqliteTable(
+  "match_mixed_doubles_settings",
+  {
+    matchId: text("match_id")
+      .primaryKey()
+      .references(() => matchData.matchId, { onDelete: "cascade" }),
+    positionedStonesPattern: integer("positioned_stones_pattern").notNull(),
+    team0PowerPlayEnd: integer("team0_power_play_end"),
+    team1PowerPlayEnd: integer("team1_power_play_end"),
+    // Per-end selector(hammer) team_id list. Index corresponds to end_number.
+    endSetupTeamIds: text("end_setup_team_ids", { mode: "json" })
+      .$type<string[]>()
+      .notNull(),
+  },
+);
 
 export const shotInfo = sqliteTable("shot_info", {
   shotId: text("shot_id").primaryKey(),

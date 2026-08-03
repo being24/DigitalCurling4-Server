@@ -23,7 +23,11 @@ export async function readMatchDataRow(
   db: DrizzleD1Database,
   matchId: string,
 ): Promise<MatchDataRow | null> {
-  const rows = await db.select().from(matchDataTable).where(eq(matchDataTable.matchId, matchId)).limit(1);
+  const rows = await db
+    .select()
+    .from(matchDataTable)
+    .where(eq(matchDataTable.matchId, matchId))
+    .limit(1);
   const row = rows[0];
   if (!row) return null;
 
@@ -75,11 +79,16 @@ function selectStateWithRelations(db: DrizzleD1Database) {
       scoreTeam1: score.team1,
     })
     .from(state)
-    .leftJoin(stoneCoordinate, eq(state.stoneCoordinateId, stoneCoordinate.stoneCoordinateId))
+    .leftJoin(
+      stoneCoordinate,
+      eq(state.stoneCoordinateId, stoneCoordinate.stoneCoordinateId),
+    )
     .leftJoin(score, eq(state.scoreId, score.scoreId));
 }
 
-type RawStateRow = Awaited<ReturnType<ReturnType<typeof selectStateWithRelations>["where"]>>[number];
+type RawStateRow = Awaited<
+  ReturnType<ReturnType<typeof selectStateWithRelations>["where"]>
+>[number];
 
 function toStateWithRelations(row: RawStateRow): StateWithRelations {
   return {
@@ -115,7 +124,11 @@ export async function readLatestStateData(
 ): Promise<StateWithRelations | null> {
   const rows = await selectStateWithRelations(db)
     .where(eq(state.matchId, matchId))
-    .orderBy(desc(state.endNumber), desc(state.totalShotNumber), desc(state.stateId))
+    .orderBy(
+      desc(state.endNumber),
+      desc(state.totalShotNumber),
+      desc(state.stateId),
+    )
     .limit(1);
   return rows[0] ? toStateWithRelations(rows[0]) : null;
 }
@@ -137,9 +150,18 @@ export async function readShotInfoByPostShotStateId(
   db: DrizzleD1Database,
   stateId: string,
 ): Promise<ShotInfoRow | null> {
-  const rows = await db.select().from(shotInfo).where(eq(shotInfo.postShotStateId, stateId)).limit(1);
+  const rows = await db
+    .select()
+    .from(shotInfo)
+    .where(eq(shotInfo.postShotStateId, stateId))
+    .limit(1);
   const row = rows[0];
-  if (!row || row.translationalVelocity == null || row.angularVelocity == null || row.shotAngle == null) {
+  if (
+    !row ||
+    row.translationalVelocity == null ||
+    row.angularVelocity == null ||
+    row.shotAngle == null
+  ) {
     return null;
   }
   return {

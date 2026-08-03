@@ -146,16 +146,19 @@ export interface BuildStateModelParams {
 
 /** StateSchema+関連データをクライアント送信用のStateModelに変換する */
 export function buildStateModel(params: BuildStateModelParams): StateModel {
-  const { matchData, stateData, stoneCoordinateData, scoreData, shotInfoData } = params;
+  const { matchData, stateData, stoneCoordinateData, scoreData, shotInfoData } =
+    params;
 
   let winnerTeam: string | null = null;
   if (stateData.winnerTeamId != null) {
-    winnerTeam = stateData.winnerTeamId === matchData.firstTeamId ? "team0" : "team1";
+    winnerTeam =
+      stateData.winnerTeamId === matchData.firstTeamId ? "team0" : "team1";
   }
 
   let nextShotTeam: string | null = null;
   if (stateData.nextShotTeamId != null) {
-    nextShotTeam = stateData.nextShotTeamId === matchData.firstTeamId ? "team0" : "team1";
+    nextShotTeam =
+      stateData.nextShotTeamId === matchData.firstTeamId ? "team0" : "team1";
   }
 
   const lastMove: ShotInfoModel | null = shotInfoData
@@ -166,7 +169,8 @@ export function buildStateModel(params: BuildStateModelParams): StateModel {
       }
     : null;
 
-  const isPreEndSetup = matchData.gameMode === "mixed_doubles" && stateData.nextShotTeamId == null;
+  const isPreEndSetup =
+    matchData.gameMode === "mixed_doubles" && stateData.nextShotTeamId == null;
   const teamShotNumber = isPreEndSetup ? null : stateData.teamShotNumber;
   const totalShotNumber = isPreEndSetup ? null : stateData.totalShotNumber;
 
@@ -178,20 +182,27 @@ export function buildStateModel(params: BuildStateModelParams): StateModel {
 
   let endSetupTeamId = matchData.secondTeamId;
   const endSetupTeamIds = matchData.mixedDoublesSettings?.endSetupTeamIds;
-  if (endSetupTeamIds && stateData.endNumber >= 0 && stateData.endNumber < endSetupTeamIds.length) {
+  if (
+    endSetupTeamIds &&
+    stateData.endNumber >= 0 &&
+    stateData.endNumber < endSetupTeamIds.length
+  ) {
     endSetupTeamId = endSetupTeamIds[stateData.endNumber];
   }
 
-  const mixedDoublesSettings: MixedDoublesSettingsModel | null = matchData.mixedDoublesSettings
-    ? {
-        end_setup_team: endSetupTeamId === matchData.firstTeamId ? "team0" : "team1",
-        positioned_stones_pattern: matchData.mixedDoublesSettings.positionedStonesPattern,
-        power_play_end: {
-          team0: matchData.mixedDoublesSettings.team0PowerPlayEnd,
-          team1: matchData.mixedDoublesSettings.team1PowerPlayEnd,
-        },
-      }
-    : null;
+  const mixedDoublesSettings: MixedDoublesSettingsModel | null =
+    matchData.mixedDoublesSettings
+      ? {
+          end_setup_team:
+            endSetupTeamId === matchData.firstTeamId ? "team0" : "team1",
+          positioned_stones_pattern:
+            matchData.mixedDoublesSettings.positionedStonesPattern,
+          power_play_end: {
+            team0: matchData.mixedDoublesSettings.team0PowerPlayEnd,
+            team1: matchData.mixedDoublesSettings.team1PowerPlayEnd,
+          },
+        }
+      : null;
 
   return {
     winner_team: winnerTeam,
@@ -203,8 +214,10 @@ export function buildStateModel(params: BuildStateModelParams): StateModel {
     next_shot_team: nextShotTeam,
     first_team_remaining_time: stateData.firstTeamRemainingTime,
     second_team_remaining_time: stateData.secondTeamRemainingTime,
-    first_team_extra_end_remaining_time: stateData.firstTeamExtraEndRemainingTime,
-    second_team_extra_end_remaining_time: stateData.secondTeamExtraEndRemainingTime,
+    first_team_extra_end_remaining_time:
+      stateData.firstTeamExtraEndRemainingTime,
+    second_team_extra_end_remaining_time:
+      stateData.secondTeamExtraEndRemainingTime,
     mixed_doubles_settings: mixedDoublesSettings,
     last_move: lastMove,
     stone_coordinate: stoneCoordinateModel,

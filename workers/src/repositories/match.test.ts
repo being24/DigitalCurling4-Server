@@ -18,19 +18,20 @@ import {
   readSimulatorId,
   readTeamId,
   readUserHashPassword,
-  recordLastShotOfEnd,
   recordShotResult,
   setEndSetupTeamForEnd,
   updateFirstTeam,
   updateMatchDataWithTeamName,
   updateNextShotTeam,
-  updateSecondTeam,
 } from "./match";
 
-const schemaSql = readFileSync(join(__dirname, "../../drizzle/0000_furry_toro.sql"), "utf-8");
+const schemaSql = readFileSync(
+  join(__dirname, "../../drizzle/0000_furry_toro.sql"),
+  "utf-8",
+);
 
 function freshDb() {
-  // biome-ignore lint: fake shim is structurally compatible with D1Database for what drizzle-orm/d1 uses (prepare/batch only)
+  // fake shim is structurally compatible with D1Database for what drizzle-orm/d1 uses (prepare/batch only)
   return drizzle(createFakeD1Database(schemaSql) as never);
 }
 
@@ -53,13 +54,22 @@ describe("repositories/match", () => {
     beforeEach(async () => {
       const raw = db.$client as ReturnType<typeof createFakeD1Database>;
       // Seed physical_simulator directly via the fake client (mirrors src/main.py lifespan seeding).
-      await raw.prepare("INSERT INTO physical_simulator (physical_simulator_id, simulator_name) VALUES (?, ?)").bind(simulatorId, "fcv1").run();
       await raw
-        .prepare("INSERT INTO users (username, hash_password, salt) VALUES (?, ?, ?)")
+        .prepare(
+          "INSERT INTO physical_simulator (physical_simulator_id, simulator_name) VALUES (?, ?)",
+        )
+        .bind(simulatorId, "fcv1")
+        .run();
+      await raw
+        .prepare(
+          "INSERT INTO users (username, hash_password, salt) VALUES (?, ?, ?)",
+        )
         .bind("alice", "hashed-alice", "salt-alice")
         .run();
       await raw
-        .prepare("INSERT INTO users (username, hash_password, salt) VALUES (?, ?, ?)")
+        .prepare(
+          "INSERT INTO users (username, hash_password, salt) VALUES (?, ?, ?)",
+        )
         .bind("bob", "hashed-bob", "salt-bob")
         .run();
     });
@@ -136,11 +146,26 @@ describe("repositories/match", () => {
         mixedDoublesSettings: null,
       });
 
-      const first = await updateMatchDataWithTeamName(db, matchId, "Team Alice", "team0");
+      const first = await updateMatchDataWithTeamName(
+        db,
+        matchId,
+        "Team Alice",
+        "team0",
+      );
       expect(first).toBe("team0");
-      const second = await updateMatchDataWithTeamName(db, matchId, "Team Bob", "team1");
+      const second = await updateMatchDataWithTeamName(
+        db,
+        matchId,
+        "Team Bob",
+        "team1",
+      );
       expect(second).toBe("team1");
-      const third = await updateMatchDataWithTeamName(db, matchId, "Team Carol", "team0");
+      const third = await updateMatchDataWithTeamName(
+        db,
+        matchId,
+        "Team Carol",
+        "team0",
+      );
       expect(third).toBeNull();
     });
 
@@ -196,7 +221,12 @@ describe("repositories/match", () => {
         startedAt: new Date(2020, 0, 1),
         mixedDoublesSettings: null,
       });
-      await updateMatchDataWithTeamName(db, "match-old", "Reused Team", "team0");
+      await updateMatchDataWithTeamName(
+        db,
+        "match-old",
+        "Reused Team",
+        "team0",
+      );
 
       await createMatchData(db, {
         matchId: "match-new",
@@ -225,7 +255,12 @@ describe("repositories/match", () => {
         startedAt: new Date(2030, 0, 1),
         mixedDoublesSettings: null,
       });
-      await updateMatchDataWithTeamName(db, "match-new", "Reused Team", "team0");
+      await updateMatchDataWithTeamName(
+        db,
+        "match-new",
+        "Reused Team",
+        "team0",
+      );
 
       expect(await readTeamId(db, "Reused Team")).toBe("team-new-id");
     });
@@ -273,10 +308,19 @@ describe("repositories/match", () => {
         shotId: null,
         nextShotTeamId: "first-team-default",
         createdAt: new Date(),
-        stoneCoordinate: { stoneCoordinateId: "sc-0", data: { team0: [], team1: [] } },
+        stoneCoordinate: {
+          stoneCoordinateId: "sc-0",
+          data: { team0: [], team1: [] },
+        },
       });
 
-      await updateFirstTeam(db, matchId, "new-team-id", ["p1", "p2", "p3", "p4"], "Team Alice");
+      await updateFirstTeam(
+        db,
+        matchId,
+        "new-team-id",
+        ["p1", "p2", "p3", "p4"],
+        "Team Alice",
+      );
       await updateNextShotTeam(db, matchId, "new-team-id");
 
       const updated = await db
@@ -331,7 +375,10 @@ describe("repositories/match", () => {
         shotId: null,
         nextShotTeamId: "first-team-default",
         createdAt: new Date(),
-        stoneCoordinate: { stoneCoordinateId: "sc-0", data: { team0: [], team1: [] } },
+        stoneCoordinate: {
+          stoneCoordinateId: "sc-0",
+          data: { team0: [], team1: [] },
+        },
       });
 
       await recordShotResult(db, {
@@ -364,7 +411,10 @@ describe("repositories/match", () => {
           shotId: null,
           nextShotTeamId: "second-team-default",
           createdAt: new Date(),
-          stoneCoordinate: { stoneCoordinateId: "sc-1", data: { team0: [{ x: 0, y: 10 }], team1: [] } },
+          stoneCoordinate: {
+            stoneCoordinateId: "sc-1",
+            data: { team0: [{ x: 0, y: 10 }], team1: [] },
+          },
         },
         preStateId: "state-0",
       });
@@ -460,7 +510,10 @@ describe("repositories/match", () => {
         )
         .bind("md-1", 0, null, null, JSON.stringify(["team1-id"]))
         .run();
-      await raw.prepare("INSERT INTO score (score_id, team0, team1) VALUES (?, ?, ?)").bind("score-1", "[0]", "[0]").run();
+      await raw
+        .prepare("INSERT INTO score (score_id, team0, team1) VALUES (?, ?, ?)")
+        .bind("score-1", "[0]", "[0]")
+        .run();
 
       const matchDataRow = {
         matchId: "md-1",
@@ -518,7 +571,9 @@ describe("repositories/match", () => {
       expect(setupState?.totalShotNumber).toBe(0);
 
       const scRows = await db.select().from(stoneCoordinate).all();
-      const sc = scRows.find((r) => r.stoneCoordinateId === setupState?.stoneCoordinateId);
+      const sc = scRows.find(
+        (r) => r.stoneCoordinateId === setupState?.stoneCoordinateId,
+      );
       expect(sc?.data).toBeTruthy();
     });
 

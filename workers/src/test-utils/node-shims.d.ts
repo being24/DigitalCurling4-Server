@@ -17,7 +17,10 @@ declare module "node:sqlite" {
     prepare(sql: string): StatementSync;
   }
   export class StatementSync {
-    run(...params: unknown[]): { changes: number; lastInsertRowid: number | bigint };
+    run(...params: unknown[]): {
+      changes: number;
+      lastInsertRowid: number | bigint;
+    };
     all(...params: unknown[]): Record<string, unknown>[];
     get(...params: unknown[]): Record<string, unknown> | undefined;
   }
@@ -26,5 +29,8 @@ declare module "node:sqlite" {
 declare const __dirname: string;
 
 declare const Buffer: {
-  from(input: string, encoding?: string): { toString(encoding?: string): string };
+  from(
+    input: string,
+    encoding?: string,
+  ): { toString(encoding?: string): string };
 };

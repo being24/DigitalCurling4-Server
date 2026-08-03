@@ -123,10 +123,17 @@ export interface MatchSummarySchema {
 }
 
 function toScoreSchema(
-  row: { scoreId: string | null; team0: number[] | null; team1: number[] | null } | null | undefined,
+  row:
+    | { scoreId: string | null; team0: number[] | null; team1: number[] | null }
+    | null
+    | undefined,
 ): ScoreSchema | null {
   if (!row || row.scoreId == null) return null;
-  return { score_id: row.scoreId, team0: row.team0 ?? [], team1: row.team1 ?? [] };
+  return {
+    score_id: row.scoreId,
+    team0: row.team0 ?? [],
+    team1: row.team1 ?? [],
+  };
 }
 
 function toStoneCoordinateSchema(
@@ -137,20 +144,34 @@ function toStoneCoordinateSchema(
 }
 
 function toTournamentSchema(
-  row: { tournamentId: string | null; tournamentName: string | null } | null | undefined,
+  row:
+    | { tournamentId: string | null; tournamentName: string | null }
+    | null
+    | undefined,
 ): TournamentSchema | null {
   if (!row || row.tournamentId == null) return null;
-  return { tournament_id: row.tournamentId, tournament_name: row.tournamentName };
+  return {
+    tournament_id: row.tournamentId,
+    tournament_name: row.tournamentName,
+  };
 }
 
 function toSimulatorSchema(
-  row: { physicalSimulatorId: string | null; simulatorName: string | null } | null | undefined,
+  row:
+    | { physicalSimulatorId: string | null; simulatorName: string | null }
+    | null
+    | undefined,
 ): PhysicalSimulatorSchema | null {
   if (!row || row.physicalSimulatorId == null) return null;
-  return { physical_simulator_id: row.physicalSimulatorId, simulator_name: row.simulatorName };
+  return {
+    physical_simulator_id: row.physicalSimulatorId,
+    simulator_name: row.simulatorName,
+  };
 }
 
-export function toShotInfoSchema(row: typeof shotInfo.$inferSelect): ShotInfoSchema {
+export function toShotInfoSchema(
+  row: typeof shotInfo.$inferSelect,
+): ShotInfoSchema {
   return {
     shot_id: row.shotId,
     player_id: row.playerId,
@@ -172,11 +193,16 @@ function selectStateJoined(db: DrizzleD1Database) {
   return db
     .select({ state, stoneCoordinate, score })
     .from(state)
-    .leftJoin(stoneCoordinate, eq(state.stoneCoordinateId, stoneCoordinate.stoneCoordinateId))
+    .leftJoin(
+      stoneCoordinate,
+      eq(state.stoneCoordinateId, stoneCoordinate.stoneCoordinateId),
+    )
     .leftJoin(score, eq(state.scoreId, score.scoreId));
 }
 
-type StateJoinedRow = Awaited<ReturnType<ReturnType<typeof selectStateJoined>["where"]>>[number];
+type StateJoinedRow = Awaited<
+  ReturnType<ReturnType<typeof selectStateJoined>["where"]>
+>[number];
 
 function toStateSchema(row: StateJoinedRow): StateSchema {
   return {
@@ -188,8 +214,10 @@ function toStateSchema(row: StateJoinedRow): StateSchema {
     total_shot_number: row.state.totalShotNumber,
     first_team_remaining_time: row.state.firstTeamRemainingTime,
     second_team_remaining_time: row.state.secondTeamRemainingTime,
-    first_team_extra_end_remaining_time: row.state.firstTeamExtraEndRemainingTime,
-    second_team_extra_end_remaining_time: row.state.secondTeamExtraEndRemainingTime,
+    first_team_extra_end_remaining_time:
+      row.state.firstTeamExtraEndRemainingTime,
+    second_team_extra_end_remaining_time:
+      row.state.secondTeamExtraEndRemainingTime,
     stone_coordinate_id: row.state.stoneCoordinateId,
     score_id: row.state.scoreId,
     shot_id: row.state.shotId,
@@ -201,13 +229,24 @@ function toStateSchema(row: StateJoinedRow): StateSchema {
 }
 
 /** `src/crud.py::ReadData.read_match_data`相当 */
-export async function readMatchData(db: DrizzleD1Database, matchId: string): Promise<MatchDataSchema | null> {
+export async function readMatchData(
+  db: DrizzleD1Database,
+  matchId: string,
+): Promise<MatchDataSchema | null> {
   const rows = await db
-    .select({ match: matchData, score, tournament, simulator: physicalSimulator })
+    .select({
+      match: matchData,
+      score,
+      tournament,
+      simulator: physicalSimulator,
+    })
     .from(matchData)
     .leftJoin(score, eq(matchData.scoreId, score.scoreId))
     .leftJoin(tournament, eq(matchData.tournamentId, tournament.tournamentId))
-    .leftJoin(physicalSimulator, eq(matchData.physicalSimulatorId, physicalSimulator.physicalSimulatorId))
+    .leftJoin(
+      physicalSimulator,
+      eq(matchData.physicalSimulatorId, physicalSimulator.physicalSimulatorId),
+    )
     .where(eq(matchData.matchId, matchId))
     .limit(1);
   const row = rows[0];
@@ -261,7 +300,10 @@ export async function readMatchData(db: DrizzleD1Database, matchId: string): Pro
 }
 
 /** `src/routers/restapi.py::_resolve_latest_match_id_by_name`相当 */
-export async function resolveLatestMatchIdByName(db: DrizzleD1Database, matchName: string): Promise<string | null> {
+export async function resolveLatestMatchIdByName(
+  db: DrizzleD1Database,
+  matchName: string,
+): Promise<string | null> {
   const rows = await db
     .select({ matchId: matchData.matchId })
     .from(matchData)
@@ -272,16 +314,28 @@ export async function resolveLatestMatchIdByName(db: DrizzleD1Database, matchNam
 }
 
 /** `src/crud.py::ReadData.read_state_data`相当 */
-export async function readStateData(db: DrizzleD1Database, stateId: string): Promise<StateSchema | null> {
-  const rows = await selectStateJoined(db).where(eq(state.stateId, stateId)).limit(1);
+export async function readStateData(
+  db: DrizzleD1Database,
+  stateId: string,
+): Promise<StateSchema | null> {
+  const rows = await selectStateJoined(db)
+    .where(eq(state.stateId, stateId))
+    .limit(1);
   return rows[0] ? toStateSchema(rows[0]) : null;
 }
 
 /** `src/crud.py::ReadData.read_latest_state_data`相当。SQLiteのDESCはNULLを末尾に置くため`.nullslast()`は不要 */
-export async function readLatestStateData(db: DrizzleD1Database, matchId: string): Promise<StateSchema | null> {
+export async function readLatestStateData(
+  db: DrizzleD1Database,
+  matchId: string,
+): Promise<StateSchema | null> {
   const rows = await selectStateJoined(db)
     .where(eq(state.matchId, matchId))
-    .orderBy(desc(state.endNumber), desc(state.totalShotNumber), desc(state.stateId))
+    .orderBy(
+      desc(state.endNumber),
+      desc(state.totalShotNumber),
+      desc(state.stateId),
+    )
     .limit(1);
   return rows[0] ? toStateSchema(rows[0]) : null;
 }
@@ -299,13 +353,18 @@ export async function readStateDataInEnd(
 }
 
 /** `src/crud.py::CollectID.collect_state_ids`相当 */
-export async function collectStateIds(db: DrizzleD1Database): Promise<string[]> {
+export async function collectStateIds(
+  db: DrizzleD1Database,
+): Promise<string[]> {
   const rows = await db.select({ stateId: state.stateId }).from(state);
   return rows.map((r) => r.stateId).filter((id): id is string => id != null);
 }
 
 /** `src/crud.py::ReadData.read_stone_data`相当 */
-export async function readStoneData(db: DrizzleD1Database, stoneCoordinateId: string): Promise<StoneCoordinateSchema | null> {
+export async function readStoneData(
+  db: DrizzleD1Database,
+  stoneCoordinateId: string,
+): Promise<StoneCoordinateSchema | null> {
   const rows = await db
     .select()
     .from(stoneCoordinate)
@@ -315,14 +374,28 @@ export async function readStoneData(db: DrizzleD1Database, stoneCoordinateId: st
 }
 
 /** `src/crud.py::ReadData.read_score_data`相当 */
-export async function readScoreData(db: DrizzleD1Database, scoreId: string): Promise<ScoreSchema | null> {
-  const rows = await db.select().from(score).where(eq(score.scoreId, scoreId)).limit(1);
+export async function readScoreData(
+  db: DrizzleD1Database,
+  scoreId: string,
+): Promise<ScoreSchema | null> {
+  const rows = await db
+    .select()
+    .from(score)
+    .where(eq(score.scoreId, scoreId))
+    .limit(1);
   return toScoreSchema(rows[0]);
 }
 
 /** `src/crud.py::ReadData.read_shot_info_data`相当 */
-export async function readShotInfoData(db: DrizzleD1Database, shotId: string): Promise<ShotInfoSchema | null> {
-  const rows = await db.select().from(shotInfo).where(eq(shotInfo.shotId, shotId)).limit(1);
+export async function readShotInfoData(
+  db: DrizzleD1Database,
+  shotId: string,
+): Promise<ShotInfoSchema | null> {
+  const rows = await db
+    .select()
+    .from(shotInfo)
+    .where(eq(shotInfo.shotId, shotId))
+    .limit(1);
   return rows[0] ? toShotInfoSchema(rows[0]) : null;
 }
 
@@ -392,8 +465,13 @@ export async function readShotInEndByTotalShotNumber(
 }
 
 /** `src/crud.py::ReadData.read_all_tournaments`相当 */
-export async function readAllTournaments(db: DrizzleD1Database): Promise<TournamentSchema[]> {
-  const rows = await db.select().from(tournament).orderBy(tournament.tournamentName);
+export async function readAllTournaments(
+  db: DrizzleD1Database,
+): Promise<TournamentSchema[]> {
+  const rows = await db
+    .select()
+    .from(tournament)
+    .orderBy(tournament.tournamentName);
   return rows
     .map(toTournamentSchema)
     .filter((t): t is TournamentSchema => t !== null);
