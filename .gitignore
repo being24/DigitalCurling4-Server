@@ -165,3 +165,8 @@ core/
 !src/simulator.so
 src/*.sqlite3
 !src/basic_certification.sqlite3
+
+# Node.js / wrangler (workers/)
+node_modules/
+.wrangler/
+*.tsbuildinfo
