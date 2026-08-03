@@ -6,6 +6,7 @@ on:
     paths: ["workers/**"]
   pull_request:
     paths: ["workers/**"]
+  workflow_dispatch: {}
 
 jobs:
   test:
