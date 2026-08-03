@@ -327,4 +327,85 @@ describe("matchRoutes", () => {
     );
     expect(shotRes.status).toBe(409);
   });
+
+  it("POST /matches with an invalid body returns 422", async () => {
+    const res = await ctx.app.request(
+      "/matches",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify({ game_mode: "not-a-real-mode" }),
+      },
+      ctx.env,
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it("store-team-config with a non-UUID match_id returns 422", async () => {
+    const res = await ctx.app.request(
+      "/store-team-config?match_id=not-a-uuid&expected_match_team_name=team0",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify({}),
+      },
+      ctx.env,
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it("store-team-config with an invalid expected_match_team_name returns 422", async () => {
+    const matchId = "019facfe-4805-71de-8582-11deeb598a43";
+    const res = await ctx.app.request(
+      `/store-team-config?match_id=${matchId}&expected_match_team_name=team9`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify({}),
+      },
+      ctx.env,
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it("POST /shots with a non-UUID match_id returns 422", async () => {
+    const res = await ctx.app.request(
+      "/shots?match_id=not-a-uuid",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify({
+          translational_velocity: 2.5,
+          angular_velocity: 1.5707,
+          shot_angle: 1.5707,
+        }),
+      },
+      ctx.env,
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it("end-setup with a non-UUID matchId path param returns 422", async () => {
+    const res = await ctx.app.request(
+      "/matches/not-a-uuid/end-setup?request=center_house",
+      {
+        method: "POST",
+        headers: { authorization: basicAuthHeader("alice", "alice-pw") },
+      },
+      ctx.env,
+    );
+    expect(res.status).toBe(422);
+  });
 });

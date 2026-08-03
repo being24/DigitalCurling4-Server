@@ -2,6 +2,7 @@ import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
 import { auth as parseBasicAuth } from "hono/utils/basic-auth";
+import { validate as isValidUuid } from "uuid";
 import type { GameMode } from "../domain/match_rules";
 import {
   calculateTotalScore,
@@ -60,8 +61,13 @@ const DEFAULT_SECOND_TEAM_PLAYER_ID = "0eb2f8a5-bc94-40f2-9e0c-6d1300f2e7b0";
 function notFound(c: Context, detail: string) {
   return c.json({ detail }, 404);
 }
+// アプリケーションロジック内の明示的な制約違反(Python版`raise bad_request(...)`)相当。
 function badRequest(c: Context, detail: string) {
   return c.json({ detail }, 400);
+}
+// クエリ/パス/ボディの必須パラメータ欠落・型不一致(Python版はPydanticの自動バリデーションで422)相当。
+function unprocessableEntity(c: Context, detail: string) {
+  return c.json({ detail }, 422);
 }
 function conflict(c: Context, detail: string) {
   return c.json({ detail }, 409);
@@ -74,6 +80,22 @@ function requireAuthUser(
   c: Context,
 ): { username: string; password: string } | null {
   return parseBasicAuth(c.req.raw) ?? null;
+}
+
+export function isValidUuidString(value: string | undefined): value is string {
+  return typeof value === "string" && isValidUuid(value);
+}
+
+/** `: UUID`型のクエリ/パスパラメータ(Python版はPydanticが自動で422にする)相当。 */
+function requireUuidValue(
+  c: Context,
+  key: string,
+  value: string | undefined,
+): string | Response {
+  if (!isValidUuidString(value)) {
+    return unprocessableEntity(c, `${key} must be a valid UUID.`);
+  }
+  return value;
 }
 
 // ---- POST /matches ----
@@ -131,7 +153,7 @@ matchRoutes.post("/matches", async (c) => {
   const db = drizzle(c.env.DB);
   const raw = await c.req.json().catch(() => null);
   const body = parseClientDataBody(raw);
-  if (!body) return badRequest(c, "Invalid request body.");
+  if (!body) return unprocessableEntity(c, "Invalid request body.");
 
   const isMixedDoubles = body.game_mode === "mixed_doubles";
 
@@ -285,15 +307,23 @@ function parseTeamConfigBody(raw: unknown): TeamConfigBody | null {
 
 matchRoutes.post("/store-team-config", async (c) => {
   const db = drizzle(c.env.DB);
-  const matchId = c.req.query("match_id");
+  const matchIdOrError = requireUuidValue(
+    c,
+    "match_id",
+    c.req.query("match_id"),
+  );
+  if (matchIdOrError instanceof Response) return matchIdOrError;
+  const matchId = matchIdOrError;
   const expectedMatchTeamName = c.req.query("expected_match_team_name");
-  if (!matchId) return badRequest(c, "match_id is required.");
   if (expectedMatchTeamName !== "team0" && expectedMatchTeamName !== "team1") {
-    return badRequest(c, "expected_match_team_name must be team0 or team1.");
+    return unprocessableEntity(
+      c,
+      "expected_match_team_name must be team0 or team1.",
+    );
   }
   const raw = await c.req.json().catch(() => null);
   const body = parseTeamConfigBody(raw);
-  if (!body) return badRequest(c, "Invalid request body.");
+  if (!body) return unprocessableEntity(c, "Invalid request body.");
 
   const authUser = requireAuthUser(c);
   if (!authUser) return unauthorized(c, "Invalid credentials");
@@ -511,11 +541,16 @@ function buildNextEndInitialState(
 
 matchRoutes.post("/shots", async (c) => {
   const db = drizzle(c.env.DB);
-  const matchId = c.req.query("match_id");
-  if (!matchId) return badRequest(c, "match_id is required.");
+  const matchIdOrError = requireUuidValue(
+    c,
+    "match_id",
+    c.req.query("match_id"),
+  );
+  if (matchIdOrError instanceof Response) return matchIdOrError;
+  const matchId = matchIdOrError;
   const raw = await c.req.json().catch(() => null);
   const shotInfoBody = parseShotInfoBody(raw);
-  if (!shotInfoBody) return badRequest(c, "Invalid request body.");
+  if (!shotInfoBody) return unprocessableEntity(c, "Invalid request body.");
 
   const endTime = new Date();
 
@@ -854,7 +889,13 @@ matchRoutes.post("/shots", async (c) => {
 
 matchRoutes.post("/matches/:matchId/end-setup", async (c) => {
   const db = drizzle(c.env.DB);
-  const matchId = c.req.param("matchId");
+  const matchIdOrError = requireUuidValue(
+    c,
+    "match_id",
+    c.req.param("matchId"),
+  );
+  if (matchIdOrError instanceof Response) return matchIdOrError;
+  const matchId = matchIdOrError;
   const request = c.req.query("request");
   if (
     request !== "pp_left" &&
@@ -862,7 +903,7 @@ matchRoutes.post("/matches/:matchId/end-setup", async (c) => {
     request !== "center_house" &&
     request !== "center_guard"
   ) {
-    return badRequest(c, "Invalid positioned_stones option.");
+    return unprocessableEntity(c, "Invalid positioned_stones option.");
   }
 
   const authUser = requireAuthUser(c);

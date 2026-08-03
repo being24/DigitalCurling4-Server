@@ -2,6 +2,7 @@ import type { DrizzleD1Database } from "drizzle-orm/d1";
 import { drizzle } from "drizzle-orm/d1";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { validate as isValidUuid } from "uuid";
 import type { Bindings } from "../env";
 import {
   collectStateIds,
@@ -33,13 +34,31 @@ function notFound(c: Context, detail: string) {
   return c.json({ detail }, 404);
 }
 
+// Python版はこれらの必須クエリ/パスパラメータをPydanticの自動バリデーション(422)で検証している。
+// エラーボディの型(detail: string[] vs string)までは揃えないが、ステータスコードは合わせる。
 function badRequest(c: Context, detail: string) {
-  return c.json({ detail }, 400);
+  return c.json({ detail }, 422);
 }
 
 function requiredQuery(c: Context, key: string): string | null {
   const value = c.req.query(key);
   return value && value.length > 0 ? value : null;
+}
+
+export function isValidUuidString(value: string | undefined): value is string {
+  return typeof value === "string" && isValidUuid(value);
+}
+
+/**
+ * `: UUID`型のパスパラメータ(Python版はPydanticが自動で422にする)相当。
+ * 不正な形式なら422 Responseを返し、呼び出し側は`instanceof Response`で分岐する。
+ */
+function requireUuidPathParam(c: Context, key: string): string | Response {
+  const value = c.req.param(key);
+  if (!isValidUuidString(value)) {
+    return badRequest(c, `${key} must be a valid UUID.`);
+  }
+  return value;
 }
 
 export function parseIntParam(value: string): number | null {
@@ -134,14 +153,18 @@ restapiRoutes.get("/matches/by-name/ends/:endNumber/shots", async (c) => {
 
 restapiRoutes.get("/matches/:matchId", async (c) => {
   const db = drizzle(c.env.DB);
-  const matchData = await readMatchData(db, c.req.param("matchId"));
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
+  const matchData = await readMatchData(db, matchId);
   if (matchData === null) return notFound(c, "Match not found.");
   return c.json(matchData);
 });
 
 restapiRoutes.get("/matches/:matchId/score", async (c) => {
   const db = drizzle(c.env.DB);
-  const matchData = await readMatchData(db, c.req.param("matchId"));
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
+  const matchData = await readMatchData(db, matchId);
   if (matchData === null || matchData.score === null)
     return notFound(c, "Match not found.");
   return c.json(matchData.score);
@@ -149,7 +172,9 @@ restapiRoutes.get("/matches/:matchId/score", async (c) => {
 
 restapiRoutes.get("/matches/:matchId/stone-coordinate/latest", async (c) => {
   const db = drizzle(c.env.DB);
-  const latestState = await readLatestStateData(db, c.req.param("matchId"));
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
+  const latestState = await readLatestStateData(db, matchId);
   if (latestState === null || latestState.stone_coordinate === null) {
     return notFound(c, "Stone coordinate not found.");
   }
@@ -158,7 +183,9 @@ restapiRoutes.get("/matches/:matchId/stone-coordinate/latest", async (c) => {
 
 restapiRoutes.get("/matches/:matchId/ends", async (c) => {
   const db = drizzle(c.env.DB);
-  const latestState = await readLatestStateData(db, c.req.param("matchId"));
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
+  const latestState = await readLatestStateData(db, matchId);
   if (latestState === null) return notFound(c, "Match not found.");
   return c.json(
     Array.from({ length: (latestState.end_number ?? 0) + 1 }, (_, i) => i),
@@ -167,27 +194,30 @@ restapiRoutes.get("/matches/:matchId/ends", async (c) => {
 
 restapiRoutes.get("/matches/:matchId/latest-state", async (c) => {
   const db = drizzle(c.env.DB);
-  const stateData = await readLatestStateData(db, c.req.param("matchId"));
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
+  const stateData = await readLatestStateData(db, matchId);
   if (stateData === null) return notFound(c, "State not found.");
   return c.json(stateData);
 });
 
 restapiRoutes.get("/matches/:matchId/ends/:endNumber/states", async (c) => {
   const db = drizzle(c.env.DB);
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
   const endNumber = parseIntParam(c.req.param("endNumber"));
   if (endNumber === null) return badRequest(c, "endNumber must be an integer.");
-  return c.json(
-    await readStateDataInEnd(db, c.req.param("matchId"), endNumber),
-  );
+  return c.json(await readStateDataInEnd(db, matchId, endNumber));
 });
 
 // ---- MatchShotsAPI ----
 
 restapiRoutes.get("/matches/:matchId/ends/:endNumber/shots", async (c) => {
   const db = drizzle(c.env.DB);
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
   const endNumber = parseIntParam(c.req.param("endNumber"));
   if (endNumber === null) return badRequest(c, "endNumber must be an integer.");
-  const matchId = c.req.param("matchId");
   const matchData = await readMatchData(db, matchId);
   if (matchData === null) return notFound(c, "Match not found.");
   return c.json(await readShotsInEnd(db, matchId, endNumber));
@@ -197,6 +227,8 @@ restapiRoutes.get(
   "/matches/:matchId/ends/:endNumber/shots/:totalShotNumber",
   async (c) => {
     const db = drizzle(c.env.DB);
+    const matchId = requireUuidPathParam(c, "matchId");
+    if (matchId instanceof Response) return matchId;
     const endNumber = parseIntParam(c.req.param("endNumber"));
     const totalShotNumber = parseIntParam(c.req.param("totalShotNumber"));
     if (endNumber === null || totalShotNumber === null) {
@@ -204,7 +236,7 @@ restapiRoutes.get(
     }
     const shotInfo = await readShotInEndByTotalShotNumber(
       db,
-      c.req.param("matchId"),
+      matchId,
       endNumber,
       totalShotNumber,
     );
@@ -215,7 +247,8 @@ restapiRoutes.get(
 
 restapiRoutes.get("/matches/:matchId/shots/latest", async (c) => {
   const db = drizzle(c.env.DB);
-  const matchId = c.req.param("matchId");
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
   const matchData = await readMatchData(db, matchId);
   if (matchData === null) return notFound(c, "Match not found.");
   const shotInfo = await readLatestShotInfoByMatchId(db, matchId);
@@ -227,7 +260,9 @@ restapiRoutes.get("/matches/:matchId/shots/latest", async (c) => {
 
 restapiRoutes.get("/states/:stateId", async (c) => {
   const db = drizzle(c.env.DB);
-  const stateData = await readStateData(db, c.req.param("stateId"));
+  const stateId = requireUuidPathParam(c, "stateId");
+  if (stateId instanceof Response) return stateId;
+  const stateData = await readStateData(db, stateId);
   if (stateData === null) return notFound(c, "State not found.");
   return c.json(stateData);
 });
@@ -241,7 +276,9 @@ restapiRoutes.get("/states", async (c) => {
 
 restapiRoutes.get("/stone_coordinate/:stoneCoordinateId", async (c) => {
   const db = drizzle(c.env.DB);
-  const stoneData = await readStoneData(db, c.req.param("stoneCoordinateId"));
+  const stoneCoordinateId = requireUuidPathParam(c, "stoneCoordinateId");
+  if (stoneCoordinateId instanceof Response) return stoneCoordinateId;
+  const stoneData = await readStoneData(db, stoneCoordinateId);
   if (stoneData === null) return notFound(c, "Stone coordinate not found.");
   return c.json(stoneData);
 });
@@ -250,7 +287,9 @@ restapiRoutes.get("/stone_coordinate/:stoneCoordinateId", async (c) => {
 
 restapiRoutes.get("/scores/:scoreId", async (c) => {
   const db = drizzle(c.env.DB);
-  const scoreData = await readScoreData(db, c.req.param("scoreId"));
+  const scoreId = requireUuidPathParam(c, "scoreId");
+  if (scoreId instanceof Response) return scoreId;
+  const scoreData = await readScoreData(db, scoreId);
   if (scoreData === null) return notFound(c, "Score not found.");
   return c.json(scoreData);
 });
@@ -259,17 +298,18 @@ restapiRoutes.get("/scores/:scoreId", async (c) => {
 
 restapiRoutes.get("/shots/by-post-state/:postStateId", async (c) => {
   const db = drizzle(c.env.DB);
-  const shotInfo = await readLastShotInfoByPostStateId(
-    db,
-    c.req.param("postStateId"),
-  );
+  const postStateId = requireUuidPathParam(c, "postStateId");
+  if (postStateId instanceof Response) return postStateId;
+  const shotInfo = await readLastShotInfoByPostStateId(db, postStateId);
   if (shotInfo === null) return notFound(c, "Shot info not found.");
   return c.json(shotInfo);
 });
 
 restapiRoutes.get("/shots/:shotId", async (c) => {
   const db = drizzle(c.env.DB);
-  const shotInfo = await readShotInfoData(db, c.req.param("shotId"));
+  const shotId = requireUuidPathParam(c, "shotId");
+  if (shotId instanceof Response) return shotId;
+  const shotInfo = await readShotInfoData(db, shotId);
   if (shotInfo === null) return notFound(c, "Shot info not found.");
   return c.json(shotInfo);
 });
