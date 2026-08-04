@@ -1,6 +1,6 @@
 # dc4-workers
 
-DigitalCurling4-Server（FastAPI + Postgres + Redis）をCloudflare Workers（Hono + D1/Drizzle ORM + Durable Objects）に移植するPoC。
+DigitalCurling4のサーバー実装。Cloudflare Workers（Hono + D1/Drizzle ORM + Durable Objects）で構築されている。
 
 ## セットアップ
 
