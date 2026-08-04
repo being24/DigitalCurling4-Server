@@ -17,10 +17,6 @@ interface BoundStatement {
   raw(): unknown[][];
 }
 
-function toRawRows(rows: Record<string, unknown>[]): unknown[][] {
-  return rows.map((row) => Object.values(row));
-}
-
 export function createFakeD1Database(schemaSql: string) {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec(schemaSql);
@@ -40,11 +36,16 @@ export function createFakeD1Database(schemaSql: string) {
         return { results: rows };
       },
       raw: () => {
-        const rows = stmt.all(...(params as never[])) as Record<
-          string,
-          unknown
-        >[];
-        return toRawRows(rows);
+        // JOINで複数テーブルに同名カラム(score_id, tournament_id等)が存在する場合、
+        // オブジェクト形式(all())だとキーがマージされ列が失われる。Drizzleの
+        // D1PreparedQuery.values()は位置ベースの配列を要求するため、setReturnArrays(true)で
+        // SELECT句の順序通りの配列として取得する(呼び出し後は元の状態に戻す)。
+        stmt.setReturnArrays(true);
+        try {
+          return stmt.all(...(params as never[])) as unknown as unknown[][];
+        } finally {
+          stmt.setReturnArrays(false);
+        }
       },
     };
   }

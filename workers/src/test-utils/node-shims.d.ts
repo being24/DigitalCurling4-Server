@@ -23,6 +23,13 @@ declare module "node:sqlite" {
     };
     all(...params: unknown[]): Record<string, unknown>[];
     get(...params: unknown[]): Record<string, unknown> | undefined;
+    /**
+     * trueの場合、all()/get()の結果を「カラム名をキーとするオブジェクト」ではなく
+     * 「SELECT句の順序通りの値の配列」として返す。JOINで同名カラムが複数テーブルに
+     * またがる場合、オブジェクト形式ではキーがマージされ列が失われるため、
+     * 位置ベースの結果マッピングを行う箇所ではこちらを使う必要がある。
+     */
+    setReturnArrays(enabled: boolean): void;
   }
 }
 
