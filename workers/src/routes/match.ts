@@ -49,7 +49,20 @@ import { callSimulateJson } from "../simulate";
  */
 
 export const matchRoutes = new Hono<{ Bindings: Bindings }>();
-matchRoutes.use(requireBasicAuth);
+// `.use(requireBasicAuth)`(パス指定なし)はHono内部で"*"(ワイルドカード)ルートとして登録され、
+// `app.route()`でマウントする際に親アプリ全体に"/*"として展開されてしまい、定義順序に関わらず
+// 無関係な他ルート(`/simulate`・`/ws`等)にも波及することを実機で確認した(Hono 4.12.32のhono-base.ts
+// `use()`実装: パス省略時は`this.#path = "*"`として`#addRoute`される)。matchRoutes配下の
+// 実際のルートパスそれぞれに明示適用することで波及を防ぐ。
+for (const path of [
+  "/matches",
+  "/store-team-config",
+  "/shots",
+  "/matches/:matchId/end-setup",
+  "/matches/:matchId/stream",
+]) {
+  matchRoutes.use(path, requireBasicAuth);
+}
 
 // match作成時に使うデフォルトのteam/player id(`src/routers/match.py::start_match`の定数をそのまま踏襲)
 const DEFAULT_FIRST_TEAM_ID = "5050f20f-cf97-4fb1-bbc1-f2c9052e0d17";
@@ -963,4 +976,37 @@ matchRoutes.post("/matches/:matchId/end-setup", async (c) => {
   }
 
   return c.json(null);
+});
+
+// ---- GET /matches/:matchId/stream (SSE) ----
+
+/**
+ * `src/routers/match.py::stream_state_info`相当。認証済みplayer向けのSSEストリーム。
+ * 公式クライアントライブラリ(`dc4client`)の`receive_state_data()`が接続する。
+ * MatchRoom(DO)のWebSocket用push配信と同じ情報を、SSE形式(`event: ...\ndata: ...\n\n`)で配信する。
+ */
+matchRoutes.get("/matches/:matchId/stream", async (c) => {
+  const db = drizzle(c.env.DB);
+  const matchIdOrError = requireUuidValue(
+    c,
+    "match_id",
+    c.req.param("matchId"),
+  );
+  if (matchIdOrError instanceof Response) return matchIdOrError;
+  const matchId = matchIdOrError;
+
+  const authUser = requireAuthUser(c);
+  if (!authUser) return unauthorized(c, "Invalid credentials");
+  const matchTeamName = await readMatchAuthTeamName(
+    db,
+    authUser.username,
+    matchId,
+  );
+  if (matchTeamName === null) return unauthorized(c, "Invalid match data");
+
+  const stub = c.env.MATCH_ROOM.getByName(matchId);
+  const sseUrl = new URL(c.req.url);
+  sseUrl.pathname = "/sse";
+  sseUrl.search = `?match=${encodeURIComponent(matchId)}&team=${matchTeamName}`;
+  return stub.fetch(new Request(sseUrl.toString()));
 });

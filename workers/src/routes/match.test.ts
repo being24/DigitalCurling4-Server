@@ -39,6 +39,10 @@ function buildApp() {
   const db = fakeD1;
   const notifyTeamConfigUpdated = vi.fn(async () => {});
   const pushStateUpdate = vi.fn(async () => {});
+  const sseFetch = vi.fn(
+    async (req: Request) =>
+      new Response("sse-ok", { status: 200, headers: req.headers }),
+  );
   const app = new Hono();
   app.route("/", matchRoutes);
   const env = {
@@ -46,7 +50,11 @@ function buildApp() {
     DB: db as never,
     PEPPER_DATA: PEPPER,
     MATCH_ROOM: {
-      getByName: () => ({ notifyTeamConfigUpdated, pushStateUpdate }),
+      getByName: () => ({
+        notifyTeamConfigUpdated,
+        pushStateUpdate,
+        fetch: sseFetch,
+      }),
     },
   };
   return {
@@ -55,6 +63,7 @@ function buildApp() {
     db: drizzle(db as never),
     notifyTeamConfigUpdated,
     pushStateUpdate,
+    sseFetch,
   };
 }
 
@@ -407,5 +416,111 @@ describe("matchRoutes", () => {
       ctx.env,
     );
     expect(res.status).toBe(422);
+  });
+
+  it("GET /matches/:matchId/stream rejects requests without basic auth", async () => {
+    const res = await ctx.app.request(
+      "/matches/019facfe-4805-71de-8582-11deeb598a43/stream",
+      { method: "GET" },
+      ctx.env,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /matches/:matchId/stream with a non-UUID matchId returns 422", async () => {
+    const res = await ctx.app.request(
+      "/matches/not-a-uuid/stream",
+      { headers: { authorization: basicAuthHeader("alice", "alice-pw") } },
+      ctx.env,
+    );
+    expect(res.status).toBe(422);
+  });
+
+  it("GET /matches/:matchId/stream returns 401 when the user has no team binding for the match", async () => {
+    const res = await ctx.app.request(
+      "/matches/019facfe-4805-71de-8582-11deeb598a43/stream",
+      { headers: { authorization: basicAuthHeader("alice", "alice-pw") } },
+      ctx.env,
+    );
+    expect(res.status).toBe(401);
+  });
+
+  it("GET /matches/:matchId/stream resolves the team from auth and delegates to MatchRoom via pathname=/sse", async () => {
+    const createRes = await ctx.app.request(
+      "/matches",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify({
+          game_mode: "standard",
+          tournament: { tournament_name: "test-cup" },
+          simulator: { simulator_name: "fcv1" },
+          applied_rule: "fgz_rule",
+          time_limit: 600,
+          extra_end_time_limit: 60,
+          standard_end_count: 8,
+          match_name: "alice vs bob",
+        }),
+      },
+      ctx.env,
+    );
+    const matchId = (await createRes.json()) as string;
+
+    const teamConfigBody = {
+      use_default_config: true,
+      team_name: "Team Alice",
+      player1: {
+        max_velocity: 4,
+        shot_std_dev: 0.01,
+        angle_std_dev: 0.01,
+        player_name: "p1",
+      },
+      player2: {
+        max_velocity: 4,
+        shot_std_dev: 0.01,
+        angle_std_dev: 0.01,
+        player_name: "p2",
+      },
+      player3: {
+        max_velocity: 4,
+        shot_std_dev: 0.01,
+        angle_std_dev: 0.01,
+        player_name: "p3",
+      },
+      player4: {
+        max_velocity: 4,
+        shot_std_dev: 0.01,
+        angle_std_dev: 0.01,
+        player_name: "p4",
+      },
+    };
+    await ctx.app.request(
+      `/store-team-config?match_id=${matchId}&expected_match_team_name=team0`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify(teamConfigBody),
+      },
+      ctx.env,
+    );
+
+    const streamRes = await ctx.app.request(
+      `/matches/${matchId}/stream`,
+      { headers: { authorization: basicAuthHeader("alice", "alice-pw") } },
+      ctx.env,
+    );
+    expect(streamRes.status).toBe(200);
+    expect(ctx.sseFetch).toHaveBeenCalledTimes(1);
+    const forwardedRequest = ctx.sseFetch.mock.calls[0][0] as Request;
+    const forwardedUrl = new URL(forwardedRequest.url);
+    expect(forwardedUrl.pathname).toBe("/sse");
+    expect(forwardedUrl.searchParams.get("match")).toBe(matchId);
+    expect(forwardedUrl.searchParams.get("team")).toBe("team0");
   });
 });
