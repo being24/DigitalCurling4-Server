@@ -67,6 +67,46 @@ function buildApp() {
   };
 }
 
+/**
+ * 複数試合の同時進行を検証するためのヘルパー。`buildApp()`と異なり、
+ * `MATCH_ROOM.getByName(matchId)`をmatchId別に独立したstubへ振り分ける
+ * (実際のDurable Objectsが`matchId`単位でインスタンス分離される挙動を模す)。
+ * 既存テスト(`buildApp()`)は影響を受けないよう、別ヘルパーとして追加する。
+ */
+function buildAppWithPerMatchDo() {
+  const fakeD1 = createFakeD1Database(schemaSql);
+  const db = fakeD1;
+  type DoStub = {
+    notifyTeamConfigUpdated: ReturnType<typeof vi.fn>;
+    pushStateUpdate: ReturnType<typeof vi.fn>;
+    sseFetch: ReturnType<typeof vi.fn>;
+  };
+  const doStubs = new Map<string, DoStub>();
+  const getByName = vi.fn((matchId: string): DoStub => {
+    let stub = doStubs.get(matchId);
+    if (!stub) {
+      stub = {
+        notifyTeamConfigUpdated: vi.fn(async () => {}),
+        pushStateUpdate: vi.fn(async () => {}),
+        sseFetch: vi.fn(
+          async (req: Request) =>
+            new Response("sse-ok", { status: 200, headers: req.headers }),
+        ),
+      };
+      doStubs.set(matchId, stub);
+    }
+    return stub;
+  });
+  const app = new Hono();
+  app.route("/", matchRoutes);
+  const env = {
+    DB: db as never,
+    PEPPER_DATA: PEPPER,
+    MATCH_ROOM: { getByName },
+  };
+  return { app, env, db: drizzle(db as never), getByName, doStubs };
+}
+
 async function seedUser(
   rawDb: ReturnType<typeof createFakeD1Database>,
   username: string,
@@ -522,5 +562,238 @@ describe("matchRoutes", () => {
     expect(forwardedUrl.pathname).toBe("/sse");
     expect(forwardedUrl.searchParams.get("match")).toBe(matchId);
     expect(forwardedUrl.searchParams.get("team")).toBe("team0");
+  });
+});
+
+describe("複数試合の同時進行", () => {
+  let ctx: ReturnType<typeof buildAppWithPerMatchDo>;
+
+  const teamConfigBody = (teamName: string) => ({
+    use_default_config: false,
+    team_name: teamName,
+    player1: {
+      max_velocity: 4.0,
+      shot_std_dev: 0.0076,
+      angle_std_dev: 0.0018,
+      player_name: "p1",
+    },
+    player2: {
+      max_velocity: 4.0,
+      shot_std_dev: 0.0076,
+      angle_std_dev: 0.0018,
+      player_name: "p2",
+    },
+    player3: {
+      max_velocity: 4.0,
+      shot_std_dev: 0.0076,
+      angle_std_dev: 0.0018,
+      player_name: "p3",
+    },
+    player4: {
+      max_velocity: 4.0,
+      shot_std_dev: 0.0076,
+      angle_std_dev: 0.0018,
+      player_name: "p4",
+    },
+  });
+
+  async function createMatch(
+    matchName: string,
+    authUser: string,
+    authPass: string,
+  ) {
+    const res = await ctx.app.request(
+      "/matches",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader(authUser, authPass),
+        },
+        body: JSON.stringify({
+          game_mode: "standard",
+          tournament: { tournament_name: "concurrent-test-cup" },
+          simulator: { simulator_name: "fcv1" },
+          applied_rule: "fgz_rule",
+          time_limit: 600,
+          extra_end_time_limit: 60,
+          standard_end_count: 8,
+          match_name: matchName,
+        }),
+      },
+      ctx.env,
+    );
+    expect(res.status).toBe(200);
+    return (await res.json()) as string;
+  }
+
+  async function configureTeams(
+    matchId: string,
+    team0User: [string, string],
+    team1User: [string, string],
+  ) {
+    await ctx.app.request(
+      `/store-team-config?match_id=${matchId}&expected_match_team_name=team0`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader(...team0User),
+        },
+        body: JSON.stringify(teamConfigBody(`${team0User[0]}-team`)),
+      },
+      ctx.env,
+    );
+    await ctx.app.request(
+      `/store-team-config?match_id=${matchId}&expected_match_team_name=team1`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader(...team1User),
+        },
+        body: JSON.stringify(teamConfigBody(`${team1User[0]}-team`)),
+      },
+      ctx.env,
+    );
+  }
+
+  beforeEach(async () => {
+    ctx = buildAppWithPerMatchDo();
+    const rawDb = ctx.env.DB as unknown as ReturnType<
+      typeof createFakeD1Database
+    >;
+    await rawDb
+      .prepare(
+        "INSERT INTO physical_simulator (physical_simulator_id, simulator_name) VALUES (?, ?)",
+      )
+      .bind("sim-fcv1", "fcv1")
+      .run();
+    // match Aとmatch Bで別ユーザーを使い、認証レコードの取り違えが起きないことも同時に検証する。
+    await seedUser(rawDb, "alice", "alice-pw");
+    await seedUser(rawDb, "bob", "bob-pw");
+    await seedUser(rawDb, "carol", "carol-pw");
+    await seedUser(rawDb, "dave", "dave-pw");
+  });
+
+  it("2つの試合を並行して作成・team-configすると、それぞれ別のmatch_idが発行される", async () => {
+    const matchIdA = await createMatch("match-A", "alice", "alice-pw");
+    const matchIdB = await createMatch("match-B", "carol", "carol-pw");
+    expect(matchIdA).not.toBe(matchIdB);
+
+    await configureTeams(matchIdA, ["alice", "alice-pw"], ["bob", "bob-pw"]);
+    await configureTeams(matchIdB, ["carol", "carol-pw"], ["dave", "dave-pw"]);
+
+    // 各試合ごとにMATCH_ROOM.getByNameが正しいmatchIdで呼ばれている(DOインスタンスの宛先が
+    // 試合ごとに分離されていることのルーティングレベルでの検証)。
+    const calledMatchIds = ctx.getByName.mock.calls.map((call) => call[0]);
+    expect(calledMatchIds).toContain(matchIdA);
+    expect(calledMatchIds).toContain(matchIdB);
+    expect(
+      ctx.doStubs.get(matchIdA)?.notifyTeamConfigUpdated,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      ctx.doStubs.get(matchIdB)?.notifyTeamConfigUpdated,
+    ).toHaveBeenCalledTimes(2);
+  });
+
+  it("match Aへの投球は、match B向けのDOスタブを一切呼ばない(push配信のクロストーク防止)", async () => {
+    const matchIdA = await createMatch("match-A", "alice", "alice-pw");
+    const matchIdB = await createMatch("match-B", "carol", "carol-pw");
+    await configureTeams(matchIdA, ["alice", "alice-pw"], ["bob", "bob-pw"]);
+    await configureTeams(matchIdB, ["carol", "carol-pw"], ["dave", "dave-pw"]);
+
+    const shotRes = await ctx.app.request(
+      `/shots?match_id=${matchIdA}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify({
+          translational_velocity: 2.5,
+          angular_velocity: 1.5707,
+          shot_angle: 1.5707,
+        }),
+      },
+      ctx.env,
+    );
+    expect(shotRes.status).toBe(200);
+
+    expect(ctx.doStubs.get(matchIdA)?.pushStateUpdate).toHaveBeenCalledTimes(1);
+    expect(ctx.doStubs.get(matchIdB)?.pushStateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("match A/Bそれぞれで投球すると、各試合のD1状態(total_shot_number)が独立して進行する", async () => {
+    const matchIdA = await createMatch("match-A", "alice", "alice-pw");
+    const matchIdB = await createMatch("match-B", "carol", "carol-pw");
+    await configureTeams(matchIdA, ["alice", "alice-pw"], ["bob", "bob-pw"]);
+    await configureTeams(matchIdB, ["carol", "carol-pw"], ["dave", "dave-pw"]);
+
+    // match Aのみ投球を1回進める。match Bは未投球のまま。
+    await ctx.app.request(
+      `/shots?match_id=${matchIdA}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("alice", "alice-pw"),
+        },
+        body: JSON.stringify({
+          translational_velocity: 2.5,
+          angular_velocity: 1.5707,
+          shot_angle: 1.5707,
+        }),
+      },
+      ctx.env,
+    );
+
+    const { state } = await import("../db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const statesA = await ctx.db
+      .select()
+      .from(state)
+      .where(eq(state.matchId, matchIdA))
+      .all();
+    const statesB = await ctx.db
+      .select()
+      .from(state)
+      .where(eq(state.matchId, matchIdB))
+      .all();
+
+    // match A: 初期state(totalShotNumber=0) + 投球後state(totalShotNumber=1)
+    expect(statesA.map((s) => s.totalShotNumber).sort()).toEqual([0, 1]);
+    // match B: 未投球のため初期stateのみ
+    expect(statesB.map((s) => s.totalShotNumber)).toEqual([0]);
+  });
+
+  it("match Aでteam0(Alice)の番のときにmatch Bのteam1(Dave)が誤って投球できない", async () => {
+    const matchIdA = await createMatch("match-A", "alice", "alice-pw");
+    const matchIdB = await createMatch("match-B", "carol", "carol-pw");
+    await configureTeams(matchIdA, ["alice", "alice-pw"], ["bob", "bob-pw"]);
+    await configureTeams(matchIdB, ["carol", "carol-pw"], ["dave", "dave-pw"]);
+
+    // daveはmatch Bのteam1であり、match Aには一切登録されていないため、
+    // match A宛の投球はmatch_team_name解決に失敗し401になるはず(readMatchAuthTeamNameは
+    // (username, matchId)の複合条件で引くため、他試合の認証情報を誤って使うことはない)。
+    const res = await ctx.app.request(
+      `/shots?match_id=${matchIdA}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("dave", "dave-pw"),
+        },
+        body: JSON.stringify({
+          translational_velocity: 2.5,
+          angular_velocity: 1.5707,
+          shot_angle: 1.5707,
+        }),
+      },
+      ctx.env,
+    );
+    expect(res.status).toBe(401);
   });
 });
