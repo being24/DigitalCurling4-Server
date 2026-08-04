@@ -3,12 +3,23 @@
   "private": true,
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "typecheck": "node node_modules/.bin/tsc --noEmit",
+    "test": "node node_modules/.bin/vitest run",
+    "lint": "node node_modules/.bin/biome check .",
+    "format": "node node_modules/.bin/biome format --write ."
   },
-  "dependencies": {},
+  "dependencies": {
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.32",
+    "uuid": "^14.0.1"
+  },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.6",
     "@cloudflare/workers-types": "^5.20260728.1",
+    "drizzle-kit": "^0.31.10",
     "typescript": "^7.0.2",
+    "vitest": "^4.1.10",
     "wrangler": "^4.115.0"
   }
 }

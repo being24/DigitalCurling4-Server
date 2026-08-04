@@ -1,0 +1,4 @@
+# ローカル開発用のシークレット設定例。
+# コピーして .dev.vars を作成し、実際の値を設定すること (.dev.varsはコミットしない)。
+# 本番はWorkers Secretsに設定する: wrangler secret put PEPPER_DATA
+PEPPER_DATA=change-me-in-dev-vars
