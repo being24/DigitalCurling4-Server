@@ -2,6 +2,8 @@
 
 DigitalCurling4のサーバー実装。Cloudflare Workers（Hono + D1/Drizzle ORM + Durable Objects）で構築されている。
 
+REST API・WebSocket/SSEプロトコル・アーキテクチャの詳細は[ドキュメントサイト](https://being24.github.io/DigitalCurling4-Server/)を参照。
+
 ## セットアップ
 
 ```sh
