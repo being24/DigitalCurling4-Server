@@ -224,3 +224,17 @@ export function buildStateModel(params: BuildStateModelParams): StateModel {
     score: { team0: scoreData.team0 ?? [], team1: scoreData.team1 ?? [] },
   };
 }
+
+export type StateEventType = "state_update" | "latest_state_update";
+
+/**
+ * `src/redis_subscriber.py::event_generator`が送出するSSEイベントの1件を
+ * `event: <type>\ndata: <json>\n\n`形式にフォーマットする。
+ * 公式クライアントライブラリ(`dc4client`)のSSEパーサーが直接この形式を読む。
+ */
+export function formatSseEvent(
+  type: StateEventType,
+  model: StateModel,
+): string {
+  return `event: ${type}\ndata: ${JSON.stringify(model)}\n\n`;
+}

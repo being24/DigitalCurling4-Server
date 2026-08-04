@@ -11,7 +11,8 @@
       "**",
       "!!src/fcv1_simulator.mjs",
       "!!drizzle",
-      "!!wrangler.jsonc"
+      "!!wrangler.jsonc",
+      "!!.wrangler"
     ]
   },
   "formatter": {

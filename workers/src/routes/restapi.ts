@@ -333,3 +333,24 @@ restapiRoutes.get("/matches", async (c) => {
     return notFound(c, "Tournament not found or has no matches.");
   return c.json(matches);
 });
+
+// ---- Viewer SSE ----
+
+/**
+ * `src/routers/match.py::stream_state_info_viewer`相当。認証不要の観戦用SSEストリーム。
+ * 公式クライアントライブラリ(`dc4client`)のviewer用途に対応する。
+ */
+restapiRoutes.get("/matches/:matchId/viewer", async (c) => {
+  const db = drizzle(c.env.DB);
+  const matchId = requireUuidPathParam(c, "matchId");
+  if (matchId instanceof Response) return matchId;
+
+  const matchData = await readMatchData(db, matchId);
+  if (matchData === null) return notFound(c, "Match not found.");
+
+  const stub = c.env.MATCH_ROOM.getByName(matchId);
+  const sseUrl = new URL(c.req.url);
+  sseUrl.pathname = "/sse";
+  sseUrl.search = `?match=${encodeURIComponent(matchId)}&team=viewer`;
+  return stub.fetch(new Request(sseUrl.toString()));
+});

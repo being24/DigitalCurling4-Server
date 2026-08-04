@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStateModel,
+  formatSseEvent,
   type MatchDataRow,
+  type StateModel,
   type StateRow,
   sortStatesForReplay,
 } from "./services/state_replay";
@@ -294,5 +296,45 @@ describe("buildStateModel", () => {
       scoreData: { team0: [1, 2, 3], team1: [0, 1, 0] },
     });
     expect(model.score).toEqual({ team0: [1, 2, 3], team1: [0, 1, 0] });
+  });
+});
+
+describe("formatSseEvent", () => {
+  const sampleModel: StateModel = {
+    winner_team: null,
+    first_team_name: "Team A",
+    second_team_name: "Team B",
+    end_number: 0,
+    team_shot_number: 1,
+    total_shot_number: 1,
+    next_shot_team: "team1",
+    first_team_remaining_time: 100,
+    second_team_remaining_time: 100,
+    first_team_extra_end_remaining_time: 30,
+    second_team_extra_end_remaining_time: 30,
+    mixed_doubles_settings: null,
+    last_move: null,
+    stone_coordinate: { data: {} },
+    score: { team0: [], team1: [] },
+  };
+
+  it("event行とdata行をCRLFなしの`\\n\\n`区切りで出力する(dc4clientのSSEパーサーが要求する形式)", () => {
+    const result = formatSseEvent("state_update", sampleModel);
+    expect(result).toBe(
+      `event: state_update\ndata: ${JSON.stringify(sampleModel)}\n\n`,
+    );
+  });
+
+  it("latest_state_updateも同じ形式で出力する", () => {
+    const result = formatSseEvent("latest_state_update", sampleModel);
+    expect(result.startsWith("event: latest_state_update\ndata: ")).toBe(true);
+    expect(result.endsWith("\n\n")).toBe(true);
+  });
+
+  it("dataはStateModelのJSON表現で、winner_team等のフィールド名がそのまま含まれる", () => {
+    const result = formatSseEvent("state_update", sampleModel);
+    const dataLine = result.split("\n")[1];
+    const parsed = JSON.parse(dataLine.slice("data: ".length));
+    expect(parsed).toEqual(sampleModel);
   });
 });
