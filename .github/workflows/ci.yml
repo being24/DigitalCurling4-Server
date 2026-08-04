@@ -24,3 +24,19 @@ jobs:
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run test
+
+  deploy:
+    needs: test
+    if: github.ref == 'refs/heads/local_build' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+        working-directory: workers
+      - uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: workers
+          preCommands: wrangler d1 migrations apply dc4-db --remote
