@@ -2,6 +2,8 @@
 
 DigitalCurling4-Server（FastAPI + Postgres + Redis）をCloudflare Workers（Hono + D1/Drizzle ORM + Durable Objects）に移植するPoC。
 
+REST API・WebSocket/SSEプロトコル・アーキテクチャの詳細は[ドキュメントサイト](https://being24.github.io/DigitalCurling4-Server/)を参照。
+
 ## セットアップ
 
 ```sh
