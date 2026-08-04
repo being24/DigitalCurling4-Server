@@ -98,4 +98,67 @@ describe("GET /matches/:matchId/viewer", () => {
     expect(forwardedUrl.searchParams.get("match")).toBe(matchId);
     expect(forwardedUrl.searchParams.get("team")).toBe("viewer");
   });
+
+  describe("複数試合の同時進行", () => {
+    /** matchId別に独立したDOスタブを返す(実際のDurable Objectsのインスタンス分離を模す)。 */
+    function buildAppWithPerMatchDo() {
+      const fakeD1 = createFakeD1Database(schemaSql);
+      const sseFetchByMatch = new Map<string, ReturnType<typeof vi.fn>>();
+      const getByName = vi.fn((matchId: string) => {
+        let sseFetch = sseFetchByMatch.get(matchId);
+        if (!sseFetch) {
+          sseFetch = vi.fn(
+            async (req: Request) =>
+              new Response("sse-ok", { status: 200, headers: req.headers }),
+          );
+          sseFetchByMatch.set(matchId, sseFetch);
+        }
+        return { fetch: sseFetch };
+      });
+      const app = new Hono();
+      app.route("/", restapiRoutes);
+      const env = { DB: fakeD1 as never, MATCH_ROOM: { getByName } };
+      return { app, env, fakeD1, getByName, sseFetchByMatch };
+    }
+
+    it("match Aのviewer接続は、match B向けのDOスタブを一切呼ばない", async () => {
+      const { app, env, fakeD1, sseFetchByMatch } = buildAppWithPerMatchDo();
+      const matchIdA = "019facfe-4805-71de-8582-11deeb598a43";
+      const matchIdB = "019facfe-4805-71de-8582-22deeb598b54";
+      await fakeD1
+        .prepare("INSERT INTO match_data (match_id) VALUES (?), (?)")
+        .bind(matchIdA, matchIdB)
+        .run();
+
+      const res = await app.request(`/matches/${matchIdA}/viewer`, {}, env);
+      expect(res.status).toBe(200);
+
+      const sseFetchA = sseFetchByMatch.get(matchIdA);
+      expect(sseFetchA).toHaveBeenCalledTimes(1);
+      expect(sseFetchByMatch.get(matchIdB)).toBeUndefined();
+      if (!sseFetchA) throw new Error("sseFetchA must be defined here");
+
+      const forwardedUrl = new URL((sseFetchA.mock.calls[0][0] as Request).url);
+      expect(forwardedUrl.searchParams.get("match")).toBe(matchIdA);
+    });
+
+    it("2つの試合それぞれのviewerへ同時接続すると、各々が正しいmatchIdでDOへ委譲される", async () => {
+      const { app, env, fakeD1, sseFetchByMatch } = buildAppWithPerMatchDo();
+      const matchIdA = "019facfe-4805-71de-8582-11deeb598a43";
+      const matchIdB = "019facfe-4805-71de-8582-22deeb598b54";
+      await fakeD1
+        .prepare("INSERT INTO match_data (match_id) VALUES (?), (?)")
+        .bind(matchIdA, matchIdB)
+        .run();
+
+      const [resA, resB] = await Promise.all([
+        app.request(`/matches/${matchIdA}/viewer`, {}, env),
+        app.request(`/matches/${matchIdB}/viewer`, {}, env),
+      ]);
+      expect(resA.status).toBe(200);
+      expect(resB.status).toBe(200);
+      expect(sseFetchByMatch.get(matchIdA)).toHaveBeenCalledTimes(1);
+      expect(sseFetchByMatch.get(matchIdB)).toHaveBeenCalledTimes(1);
+    });
+  });
 });

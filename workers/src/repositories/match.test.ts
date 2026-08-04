@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/d1";
 import { beforeEach, describe, expect, it } from "vitest";
+import { readLatestStateData } from "../services/match_room_queries";
 import { createFakeD1Database } from "../test-utils/fake-d1";
 import {
   createMatchAuth,
@@ -590,6 +591,250 @@ describe("repositories/match", () => {
       await setEndSetupTeamForEnd(db, "md-2", 1, "team0-id");
       const row = await readMixedDoublesSettingsRow(db, "md-2");
       expect(row?.endSetupTeamIds).toEqual(["team1-id", "team0-id"]);
+    });
+  });
+
+  describe("複数試合の並存(standard + mixed doubles混在)", () => {
+    const simulatorId = "sim-multi";
+
+    function matchDataInput(overrides: {
+      matchId: string;
+      scoreId: string;
+      gameMode: "standard" | "mixed_doubles";
+      matchName: string;
+    }) {
+      const isMixedDoubles = overrides.gameMode === "mixed_doubles";
+      return {
+        matchId: overrides.matchId,
+        scoreId: overrides.scoreId,
+        tournamentId: `tour-${overrides.matchId}`,
+        tournamentName: "concurrent-test",
+        teamScore: [0, 0],
+        firstTeamId: `first-${overrides.matchId}`,
+        firstTeamPlayer1Id: "ai-1",
+        firstTeamPlayer2Id: "ai-1",
+        firstTeamPlayer3Id: isMixedDoubles ? null : "ai-1",
+        firstTeamPlayer4Id: isMixedDoubles ? null : "ai-1",
+        secondTeamId: `second-${overrides.matchId}`,
+        secondTeamPlayer1Id: "ai-2",
+        secondTeamPlayer2Id: "ai-2",
+        secondTeamPlayer3Id: isMixedDoubles ? null : "ai-2",
+        secondTeamPlayer4Id: isMixedDoubles ? null : "ai-2",
+        timeLimit: 600,
+        extraEndTimeLimit: 60,
+        standardEndCount: 8,
+        appliedRule: isMixedDoubles ? 2 : 0,
+        physicalSimulatorId: simulatorId,
+        matchName: overrides.matchName,
+        gameMode: overrides.gameMode,
+        createdAt: new Date(),
+        startedAt: new Date(),
+        mixedDoublesSettings: isMixedDoubles
+          ? {
+              positionedStonesPattern: 0,
+              endSetupTeamIds: [`second-${overrides.matchId}`],
+            }
+          : null,
+      };
+    }
+
+    beforeEach(async () => {
+      const raw = db.$client as ReturnType<typeof createFakeD1Database>;
+      await raw
+        .prepare(
+          "INSERT INTO physical_simulator (physical_simulator_id, simulator_name) VALUES (?, ?)",
+        )
+        .bind(simulatorId, "fcv1")
+        .run();
+    });
+
+    it("standard試合とmixed doubles試合が同じD1上に並存しても、readMatchDataは互いを混同しない", async () => {
+      await createMatchData(
+        db,
+        matchDataInput({
+          matchId: "std-match",
+          scoreId: "std-score",
+          gameMode: "standard",
+          matchName: "std",
+        }),
+      );
+      await createMatchData(
+        db,
+        matchDataInput({
+          matchId: "md-match",
+          scoreId: "md-score",
+          gameMode: "mixed_doubles",
+          matchName: "md",
+        }),
+      );
+
+      const stdMatch = await readMatchData(db, "std-match");
+      const mdMatch = await readMatchData(db, "md-match");
+
+      expect(stdMatch?.gameMode).toBe("standard");
+      expect(stdMatch?.mixedDoublesSettings).toBeNull();
+      expect(mdMatch?.gameMode).toBe("mixed_doubles");
+      expect(mdMatch?.mixedDoublesSettings?.positionedStonesPattern).toBe(0);
+    });
+
+    it("複数試合それぞれにcreateStateDataでstateを積んでも、readLatestStateDataは対象matchIdのstateのみを返す", async () => {
+      await createMatchData(
+        db,
+        matchDataInput({
+          matchId: "match-x",
+          scoreId: "score-x",
+          gameMode: "standard",
+          matchName: "x",
+        }),
+      );
+      await createMatchData(
+        db,
+        matchDataInput({
+          matchId: "match-y",
+          scoreId: "score-y",
+          gameMode: "standard",
+          matchName: "y",
+        }),
+      );
+
+      // match-xは2件のstate(初期+投球後)、match-yは1件(初期のみ)を積む。
+      await createStateData(db, {
+        stateId: "state-x-0",
+        winnerTeamId: null,
+        matchId: "match-x",
+        endNumber: 0,
+        teamShotNumber: 0,
+        totalShotNumber: 0,
+        firstTeamRemainingTime: 600,
+        secondTeamRemainingTime: 600,
+        firstTeamExtraEndRemainingTime: 60,
+        secondTeamExtraEndRemainingTime: 60,
+        scoreId: "score-x",
+        shotId: null,
+        nextShotTeamId: "first-match-x",
+        createdAt: new Date(),
+        stoneCoordinate: {
+          stoneCoordinateId: "sc-x-0",
+          data: { team0: [], team1: [] },
+        },
+      });
+      await createStateData(db, {
+        stateId: "state-x-1",
+        winnerTeamId: null,
+        matchId: "match-x",
+        endNumber: 0,
+        teamShotNumber: 1,
+        totalShotNumber: 1,
+        firstTeamRemainingTime: 599,
+        secondTeamRemainingTime: 600,
+        firstTeamExtraEndRemainingTime: 60,
+        secondTeamExtraEndRemainingTime: 60,
+        scoreId: "score-x",
+        shotId: null,
+        nextShotTeamId: "second-match-x",
+        createdAt: new Date(),
+        stoneCoordinate: {
+          stoneCoordinateId: "sc-x-1",
+          data: { team0: [], team1: [] },
+        },
+      });
+      await createStateData(db, {
+        stateId: "state-y-0",
+        winnerTeamId: null,
+        matchId: "match-y",
+        endNumber: 0,
+        teamShotNumber: 0,
+        totalShotNumber: 0,
+        firstTeamRemainingTime: 600,
+        secondTeamRemainingTime: 600,
+        firstTeamExtraEndRemainingTime: 60,
+        secondTeamExtraEndRemainingTime: 60,
+        scoreId: "score-y",
+        shotId: null,
+        nextShotTeamId: "first-match-y",
+        createdAt: new Date(),
+        stoneCoordinate: {
+          stoneCoordinateId: "sc-y-0",
+          data: { team0: [], team1: [] },
+        },
+      });
+
+      const latestX = await readLatestStateData(db, "match-x");
+      const latestY = await readLatestStateData(db, "match-y");
+
+      expect(latestX?.stateRow.stateId).toBe("state-x-1");
+      expect(latestX?.stateRow.totalShotNumber).toBe(1);
+      expect(latestY?.stateRow.stateId).toBe("state-y-0");
+      expect(latestY?.stateRow.totalShotNumber).toBe(0);
+    });
+
+    it("updateNextShotTeamは対象matchIdのstateのみ更新し、他試合のstateには影響しない", async () => {
+      await createMatchData(
+        db,
+        matchDataInput({
+          matchId: "match-p",
+          scoreId: "score-p",
+          gameMode: "standard",
+          matchName: "p",
+        }),
+      );
+      await createMatchData(
+        db,
+        matchDataInput({
+          matchId: "match-q",
+          scoreId: "score-q",
+          gameMode: "standard",
+          matchName: "q",
+        }),
+      );
+      await createStateData(db, {
+        stateId: "state-p-0",
+        winnerTeamId: null,
+        matchId: "match-p",
+        endNumber: 0,
+        teamShotNumber: 0,
+        totalShotNumber: 0,
+        firstTeamRemainingTime: 600,
+        secondTeamRemainingTime: 600,
+        firstTeamExtraEndRemainingTime: 60,
+        secondTeamExtraEndRemainingTime: 60,
+        scoreId: "score-p",
+        shotId: null,
+        nextShotTeamId: "first-match-p",
+        createdAt: new Date(),
+        stoneCoordinate: {
+          stoneCoordinateId: "sc-p-0",
+          data: { team0: [], team1: [] },
+        },
+      });
+      await createStateData(db, {
+        stateId: "state-q-0",
+        winnerTeamId: null,
+        matchId: "match-q",
+        endNumber: 0,
+        teamShotNumber: 0,
+        totalShotNumber: 0,
+        firstTeamRemainingTime: 600,
+        secondTeamRemainingTime: 600,
+        firstTeamExtraEndRemainingTime: 60,
+        secondTeamExtraEndRemainingTime: 60,
+        scoreId: "score-q",
+        shotId: null,
+        nextShotTeamId: "first-match-q",
+        createdAt: new Date(),
+        stoneCoordinate: {
+          stoneCoordinateId: "sc-q-0",
+          data: { team0: [], team1: [] },
+        },
+      });
+
+      await updateNextShotTeam(db, "match-p", "second-match-p");
+
+      const latestP = await readLatestStateData(db, "match-p");
+      const latestQ = await readLatestStateData(db, "match-q");
+      expect(latestP?.stateRow.nextShotTeamId).toBe("second-match-p");
+      // match-qは更新対象外のため元のfirst-match-qのまま。
+      expect(latestQ?.stateRow.nextShotTeamId).toBe("first-match-q");
     });
   });
 });
