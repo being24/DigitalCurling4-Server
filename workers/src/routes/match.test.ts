@@ -669,11 +669,13 @@ describe("複数試合の同時進行", () => {
       )
       .bind("sim-fcv1", "fcv1")
       .run();
-    // match Aとmatch Bで別ユーザーを使い、認証レコードの取り違えが起きないことも同時に検証する。
+    // match A/B/Cで別ユーザーを使い、認証レコードの取り違えが起きないことも同時に検証する。
     await seedUser(rawDb, "alice", "alice-pw");
     await seedUser(rawDb, "bob", "bob-pw");
     await seedUser(rawDb, "carol", "carol-pw");
     await seedUser(rawDb, "dave", "dave-pw");
+    await seedUser(rawDb, "eve", "eve-pw");
+    await seedUser(rawDb, "frank", "frank-pw");
   });
 
   it("2つの試合を並行して作成・team-configすると、それぞれ別のmatch_idが発行される", async () => {
@@ -795,5 +797,106 @@ describe("複数試合の同時進行", () => {
       ctx.env,
     );
     expect(res.status).toBe(401);
+  });
+
+  it("3試合を同時進行させても、matchIdごとにDOスタブが正しく分離される", async () => {
+    const matchIdA = await createMatch("match-A", "alice", "alice-pw");
+    const matchIdB = await createMatch("match-B", "carol", "carol-pw");
+    const matchIdC = await createMatch("match-C", "eve", "eve-pw");
+    expect(new Set([matchIdA, matchIdB, matchIdC]).size).toBe(3);
+
+    await configureTeams(matchIdA, ["alice", "alice-pw"], ["bob", "bob-pw"]);
+    await configureTeams(matchIdB, ["carol", "carol-pw"], ["dave", "dave-pw"]);
+    await configureTeams(matchIdC, ["eve", "eve-pw"], ["frank", "frank-pw"]);
+
+    expect(
+      ctx.doStubs.get(matchIdA)?.notifyTeamConfigUpdated,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      ctx.doStubs.get(matchIdB)?.notifyTeamConfigUpdated,
+    ).toHaveBeenCalledTimes(2);
+    expect(
+      ctx.doStubs.get(matchIdC)?.notifyTeamConfigUpdated,
+    ).toHaveBeenCalledTimes(2);
+  });
+
+  it("3試合が同時進行中、1試合のみに投球しても他の2試合には一切pushが届かない", async () => {
+    const matchIdA = await createMatch("match-A", "alice", "alice-pw");
+    const matchIdB = await createMatch("match-B", "carol", "carol-pw");
+    const matchIdC = await createMatch("match-C", "eve", "eve-pw");
+    await configureTeams(matchIdA, ["alice", "alice-pw"], ["bob", "bob-pw"]);
+    await configureTeams(matchIdB, ["carol", "carol-pw"], ["dave", "dave-pw"]);
+    await configureTeams(matchIdC, ["eve", "eve-pw"], ["frank", "frank-pw"]);
+
+    // match Bのみに投球する。match A・Cは無関係のはず。
+    const shotRes = await ctx.app.request(
+      `/shots?match_id=${matchIdB}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: basicAuthHeader("carol", "carol-pw"),
+        },
+        body: JSON.stringify({
+          translational_velocity: 2.5,
+          angular_velocity: 1.5707,
+          shot_angle: 1.5707,
+        }),
+      },
+      ctx.env,
+    );
+    expect(shotRes.status).toBe(200);
+
+    expect(ctx.doStubs.get(matchIdB)?.pushStateUpdate).toHaveBeenCalledTimes(1);
+    expect(ctx.doStubs.get(matchIdA)?.pushStateUpdate).not.toHaveBeenCalled();
+    expect(ctx.doStubs.get(matchIdC)?.pushStateUpdate).not.toHaveBeenCalled();
+  });
+
+  it("3試合それぞれで投球すると、各試合のD1状態(total_shot_number)が互いに影響しあわず独立して進行する", async () => {
+    const matchIdA = await createMatch("match-A", "alice", "alice-pw");
+    const matchIdB = await createMatch("match-B", "carol", "carol-pw");
+    const matchIdC = await createMatch("match-C", "eve", "eve-pw");
+    await configureTeams(matchIdA, ["alice", "alice-pw"], ["bob", "bob-pw"]);
+    await configureTeams(matchIdB, ["carol", "carol-pw"], ["dave", "dave-pw"]);
+    await configureTeams(matchIdC, ["eve", "eve-pw"], ["frank", "frank-pw"]);
+
+    const shoot = (matchId: string, user: string, pass: string) =>
+      ctx.app.request(
+        `/shots?match_id=${matchId}`,
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: basicAuthHeader(user, pass),
+          },
+          body: JSON.stringify({
+            translational_velocity: 2.5,
+            angular_velocity: 1.5707,
+            shot_angle: 1.5707,
+          }),
+        },
+        ctx.env,
+      );
+
+    // match Aは2投、match Bは1投、match Cは無投球のまま進める。
+    await shoot(matchIdA, "alice", "alice-pw");
+    await shoot(matchIdA, "bob", "bob-pw");
+    await shoot(matchIdB, "carol", "carol-pw");
+
+    const { state } = await import("../db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const latestTotalShots = async (matchId: string) => {
+      const rows = await ctx.db
+        .select()
+        .from(state)
+        .where(eq(state.matchId, matchId))
+        .all();
+      return Math.max(...rows.map((r) => r.totalShotNumber ?? -1));
+    };
+
+    expect(await latestTotalShots(matchIdA)).toBe(2);
+    expect(await latestTotalShots(matchIdB)).toBe(1);
+    expect(await latestTotalShots(matchIdC)).toBe(0);
   });
 });
