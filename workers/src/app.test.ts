@@ -29,6 +29,7 @@ const schemaSql = readFileSync(
 );
 
 const PEPPER = "test-pepper";
+const fakeRateLimiter = { limit: async () => ({ success: true }) };
 
 /**
  * `app.ts`をそのまま使う統合テスト用ヘルパー。match_room.test.ts/routes/*.test.ts同様、
@@ -63,6 +64,7 @@ function buildApp() {
     DB: fakeD1 as never,
     PEPPER_DATA: PEPPER,
     MATCH_ROOM: { getByName },
+    SHOT_RATE_LIMITER: fakeRateLimiter,
   };
   return { app, env, db: drizzle(fakeD1 as never), getByName, doStubs };
 }

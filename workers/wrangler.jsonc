@@ -22,6 +22,13 @@
       "migrations_dir": "drizzle"
     }
   ],
+  "ratelimits": [
+    {
+      "name": "SHOT_RATE_LIMITER",
+      "namespace_id": "1001",
+      "simple": { "limit": 30, "period": 60 }
+    }
+  ],
   "triggers": {
     // 元実装(src/main.py lifespan内APScheduler): interval, hours=24 と同等の毎日0時実行
     "crons": ["0 0 * * *"]
