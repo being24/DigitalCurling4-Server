@@ -33,6 +33,7 @@ const schemaSql = readFileSync(
 );
 
 const PEPPER = "test-pepper";
+const fakeRateLimiter = { limit: async () => ({ success: true }) };
 
 function buildApp() {
   const fakeD1 = createFakeD1Database(schemaSql);
@@ -56,6 +57,7 @@ function buildApp() {
         fetch: sseFetch,
       }),
     },
+    SHOT_RATE_LIMITER: fakeRateLimiter,
   };
   return {
     app,
@@ -103,6 +105,7 @@ function buildAppWithPerMatchDo() {
     DB: db as never,
     PEPPER_DATA: PEPPER,
     MATCH_ROOM: { getByName },
+    SHOT_RATE_LIMITER: fakeRateLimiter,
   };
   return { app, env, db: drizzle(db as never), getByName, doStubs };
 }

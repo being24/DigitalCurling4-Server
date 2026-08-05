@@ -16,6 +16,7 @@ import type { Bindings } from "../env";
 import { distortShot } from "../lib/random";
 import { generateUuid7 } from "../lib/uuid7";
 import { requireBasicAuth } from "../middleware/basic_auth";
+import { rateLimitByUser } from "../middleware/rate_limit";
 import {
   createMatchAuth,
   createMatchData,
@@ -62,6 +63,15 @@ for (const path of [
   "/matches/:matchId/stream",
 ]) {
   matchRoutes.use(path, requireBasicAuth);
+}
+// 投球系の書き込みエンドポイントのみレート制限する(SSE接続の`/stream`は対象外)。
+for (const path of [
+  "/matches",
+  "/store-team-config",
+  "/shots",
+  "/matches/:matchId/end-setup",
+]) {
+  matchRoutes.use(path, rateLimitByUser);
 }
 
 // match作成時に使うデフォルトのteam/player id(`src/routers/match.py::start_match`の定数をそのまま踏襲)
