@@ -2,7 +2,7 @@
 
 ## 共通仕様
 
-- ベースURL: デプロイ先のWorkers URL(例: `https://dc4-workers-poc.<account>.workers.dev`)
+- ベースURL: `https://dc-cf.being24.org`
 - レスポンスは`Content-Type: application/json`
 - エラーレスポンスは`{"detail": string}`形式。主なステータスコード:
   - `400`: アプリケーションロジック上の制約違反(例: 手番でないチームの投球)
@@ -10,6 +10,7 @@
   - `404`: 対象が存在しない
   - `409`: 状態競合(例: 既に開始済みの試合への再参加)
   - `422`: リクエストパラメータの形式不正(必須値の欠落・UUID形式不正等)
+  - `429`: レートリミット超過(投球系エンドポイントのみ。[認証必須エンドポイント](#認証必須エンドポイント)参照)
 - パスパラメータの`matchId`等はUUID形式であることが要求される(不正な形式は422)
 
 ## 認証不要エンドポイント
@@ -68,6 +69,8 @@
 ## 認証必須エンドポイント
 
 `workers/src/routes/match.ts`に実装されている。すべてBasic認証が必須。
+
+`POST /matches`・`POST /store-team-config`・`POST /shots`・`POST /matches/:matchId/end-setup`はBasic認証の`username`とパス単位で30リクエスト/60秒のレートリミットが適用される。超過時は`429`。
 
 ### `POST /matches`
 
