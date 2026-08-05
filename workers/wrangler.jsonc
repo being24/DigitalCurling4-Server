@@ -29,6 +29,9 @@
       "simple": { "limit": 30, "period": 60 }
     }
   ],
+  "routes": [
+    { "pattern": "dc-cf.being24.org", "custom_domain": true }
+  ],
   "triggers": {
     // 元実装(src/main.py lifespan内APScheduler): interval, hours=24 と同等の毎日0時実行
     "crons": ["0 0 * * *"]
